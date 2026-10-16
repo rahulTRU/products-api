@@ -5,6 +5,7 @@ import { AccessTokenGuard } from './access-token.guard.js';
 import { AuthController } from './auth.controller.js';
 import { AuthRepository } from './auth.repository.js';
 import { AuthService } from './auth.service.js';
+import { RolesGuard } from './roles.guard.js';
 import { User, UserSchema } from '../users/schemas/user.schema.js';
 
 @Module({
@@ -13,7 +14,7 @@ import { User, UserSchema } from '../users/schemas/user.schema.js';
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
   ],
   controllers: [AuthController],
-  providers: [AuthService, AuthRepository, AccessTokenGuard],
-  exports: [AccessTokenGuard, AuthService, JwtModule],
+  providers: [AuthService, AuthRepository, AccessTokenGuard, RolesGuard],
+  exports: [AccessTokenGuard, AuthService, JwtModule, RolesGuard],
 })
 export class AuthModule {}

@@ -45,5 +45,11 @@ export class ListProductsQueryDto {
   @Type(() => Number)
   @IsInt()
   @Min(0)
-  offset = 0;
+  skip?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  offset?: number;
 }

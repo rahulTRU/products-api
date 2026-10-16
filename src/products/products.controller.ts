@@ -55,7 +55,13 @@ export class ProductsController {
     description: 'Inclusive ISO date bound for the product updatedAt timestamp',
   })
   @ApiQuery({ name: 'limit', required: false, example: 20 })
-  @ApiQuery({ name: 'offset', required: false, example: 0 })
+  @ApiQuery({ name: 'skip', required: false, example: 0 })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    deprecated: true,
+    description: 'Use skip instead',
+  })
   findAll(@Query() query: ListProductsQueryDto) {
     return this.productsService.findAll(query);
   }
@@ -64,6 +70,8 @@ export class ProductsController {
   @UseGuards(AccessTokenGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List products created by the current user' })
+  @ApiQuery({ name: 'limit', required: false, example: 20 })
+  @ApiQuery({ name: 'skip', required: false, example: 0 })
   findMine(
     @CurrentUser() user: AuthUserResponse,
     @Query() query: ListProductsQueryDto,

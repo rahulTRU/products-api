@@ -6,7 +6,10 @@ import { ListProductsQueryDto } from './dto/list-products-query.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
 import { Product, ProductDocument } from './schemas/product.schema.js';
 
-type ProductListFilters = Omit<ListProductsQueryDto, 'limit' | 'offset'>;
+type ProductListFilters = Omit<
+  ListProductsQueryDto,
+  'limit' | 'offset' | 'skip'
+>;
 
 @Injectable()
 export class ProductsRepository {
@@ -18,21 +21,16 @@ export class ProductsRepository {
   findAll(
     filters: ProductListFilters,
     limit: number,
-    offset: number,
+    skip: number,
   ): Promise<ProductDocument[]> {
-    return this.findWithFilter(
-      this.buildFilter(filters),
-      filters,
-      limit,
-      offset,
-    );
+    return this.findWithFilter(this.buildFilter(filters), filters, limit, skip);
   }
 
   findMine(
     userId: string,
     filters: ProductListFilters,
     limit: number,
-    offset: number,
+    skip: number,
   ): Promise<ProductDocument[]> {
     return this.findWithFilter(
       {
@@ -41,7 +39,7 @@ export class ProductsRepository {
       },
       filters,
       limit,
-      offset,
+      skip,
     );
   }
 
@@ -123,12 +121,12 @@ export class ProductsRepository {
     filter: QueryFilter<Product>,
     filters: ProductListFilters,
     limit: number,
-    offset: number,
+    skip: number,
   ): Promise<ProductDocument[]> {
     return this.productModel
       .find(filter)
       .sort({ [filters.sortBy]: filters.order === 'asc' ? 1 : -1 })
-      .skip(offset)
+      .skip(skip)
       .limit(limit)
       .exec();
   }

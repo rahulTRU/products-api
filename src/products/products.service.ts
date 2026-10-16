@@ -20,8 +20,12 @@ export class ProductsService {
 
   findAll(query: ListProductsQueryDto): Promise<ProductDocument[]> {
     this.validateModifiedDateRange(query);
-    const { limit, offset, ...filters } = query;
-    return this.productsRepository.findAll(filters, limit, offset);
+    const { limit, skip, offset, ...filters } = query;
+    return this.productsRepository.findAll(
+      filters,
+      limit,
+      skip ?? offset ?? 0,
+    );
   }
 
   findMine(
@@ -29,8 +33,13 @@ export class ProductsService {
     query: ListProductsQueryDto,
   ): Promise<ProductDocument[]> {
     this.validateModifiedDateRange(query);
-    const { limit, offset, ...filters } = query;
-    return this.productsRepository.findMine(userId, filters, limit, offset);
+    const { limit, skip, offset, ...filters } = query;
+    return this.productsRepository.findMine(
+      userId,
+      filters,
+      limit,
+      skip ?? offset ?? 0,
+    );
   }
 
   async findCategories(): Promise<string[]> {
@@ -58,7 +67,7 @@ export class ProductsService {
         modifiedBefore: query.modifiedBefore,
       },
       query.limit,
-      query.offset,
+      query.skip ?? query.offset ?? 0,
     );
   }
 

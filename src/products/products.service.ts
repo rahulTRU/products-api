@@ -1,25 +1,23 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
-import { Product, ProductDocument } from './schemas/product.schema.js';
+import { ProductDocument } from './schemas/product.schema.js';
+import { ProductsRepository } from './products.repository.js';
 
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
 
   constructor(
-    @InjectModel(Product.name)
-    private readonly productModel: Model<Product>,
+    private readonly productsRepository: ProductsRepository,
   ) {}
 
   findAll(): Promise<ProductDocument[]> {
-    return this.productModel.find().exec();
+    return this.productsRepository.findAll();
   }
 
   async findOne(id: string): Promise<ProductDocument> {
-    const product = await this.productModel.findById(id).exec();
+    const product = await this.productsRepository.findById(id);
     if (!product) {
       throw new NotFoundException(`Product ${id} was not found`);
     }
@@ -27,7 +25,7 @@ export class ProductsService {
   }
 
   async create(createProductDto: CreateProductDto): Promise<ProductDocument> {
-    const product = await this.productModel.create(createProductDto);
+    const product = await this.productsRepository.create(createProductDto);
     this.logger.log(`Created product ${product.id}`);
     return product;
   }
@@ -36,12 +34,7 @@ export class ProductsService {
     id: string,
     updateProductDto: UpdateProductDto,
   ): Promise<ProductDocument> {
-    const product = await this.productModel
-      .findByIdAndUpdate(id, updateProductDto, {
-        new: true,
-        runValidators: true,
-      })
-      .exec();
+    const product = await this.productsRepository.update(id, updateProductDto);
     if (!product) {
       throw new NotFoundException(`Product ${id} was not found`);
     }
@@ -50,7 +43,7 @@ export class ProductsService {
   }
 
   async remove(id: string): Promise<ProductDocument> {
-    const product = await this.productModel.findByIdAndDelete(id).exec();
+    const product = await this.productsRepository.delete(id);
     if (!product) {
       throw new NotFoundException(`Product ${id} was not found`);
     }

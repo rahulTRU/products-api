@@ -4,11 +4,18 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { InventoryService } from '../inventory/inventory.service.js';
+import type { InventorySummary } from '../inventory/inventory.service.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { ListProductsQueryDto } from './dto/list-products-query.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
-import { ProductDocument } from './schemas/product.schema.js';
+import type { ProductDocument } from './schemas/product.schema.js';
 import { ProductsRepository } from './products.repository.js';
+
+type ProductResponse = ReturnType<ProductDocument['toObject']> & {
+  inventory: InventorySummary | null;
+  availabilityStatus: InventorySummary['availabilityStatus'];
+};
 
 @Injectable()
 export class ProductsService {
@@ -16,29 +23,30 @@ export class ProductsService {
 
   constructor(
     private readonly productsRepository: ProductsRepository,
+    private readonly inventoryService: InventoryService,
   ) {}
 
-  findAll(query: ListProductsQueryDto): Promise<ProductDocument[]> {
+  async findAll(query: ListProductsQueryDto): Promise<ProductResponse[]> {
     this.validateModifiedDateRange(query);
     const { limit, skip, offset, ...filters } = query;
-    return this.productsRepository.findAll(
-      filters,
-      limit,
-      skip ?? offset ?? 0,
+    return this.withInventory(
+      await this.productsRepository.findAll(filters, limit, skip ?? offset ?? 0),
     );
   }
 
-  findMine(
+  async findMine(
     userId: string,
     query: ListProductsQueryDto,
-  ): Promise<ProductDocument[]> {
+  ): Promise<ProductResponse[]> {
     this.validateModifiedDateRange(query);
     const { limit, skip, offset, ...filters } = query;
-    return this.productsRepository.findMine(
-      userId,
-      filters,
-      limit,
-      skip ?? offset ?? 0,
+    return this.withInventory(
+      await this.productsRepository.findMine(
+        userId,
+        filters,
+        limit,
+        skip ?? offset ?? 0,
+      ),
     );
   }
 
@@ -49,7 +57,7 @@ export class ProductsService {
   async findByCategory(
     category: string,
     query: ListProductsQueryDto,
-  ): Promise<ProductDocument[]> {
+  ): Promise<ProductResponse[]> {
     const normalizedCategory = category.trim().toLowerCase();
     if (!(await this.productsRepository.existsInCategory(normalizedCategory))) {
       throw new NotFoundException(
@@ -57,45 +65,47 @@ export class ProductsService {
       );
     }
     this.validateModifiedDateRange(query);
-    return this.productsRepository.findAll(
-      {
-        category: normalizedCategory,
-        name: query.name,
-        sortBy: query.sortBy,
-        order: query.order,
-        modifiedAfter: query.modifiedAfter,
-        modifiedBefore: query.modifiedBefore,
-      },
-      query.limit,
-      query.skip ?? query.offset ?? 0,
+    return this.withInventory(
+      await this.productsRepository.findAll(
+        {
+          category: normalizedCategory,
+          name: query.name,
+          sortBy: query.sortBy,
+          order: query.order,
+          modifiedAfter: query.modifiedAfter,
+          modifiedBefore: query.modifiedBefore,
+        },
+        query.limit,
+        query.skip ?? query.offset ?? 0,
+      ),
     );
   }
 
-  async findOne(id: string): Promise<ProductDocument> {
+  async findOne(id: string): Promise<ProductResponse> {
     const product = await this.productsRepository.findById(id);
     if (!product) {
       throw new NotFoundException(`Product ${id} was not found`);
     }
-    return product;
+    return (await this.withInventory([product]))[0]!;
   }
 
   async create(
     createProductDto: CreateProductDto,
     userId: string,
-  ): Promise<ProductDocument> {
+  ): Promise<ProductResponse> {
     const product = await this.productsRepository.create(
       createProductDto,
       userId,
     );
     this.logger.log(`Created product ${product.id}`);
-    return product;
+    return (await this.withInventory([product]))[0]!;
   }
 
   async update(
     id: string,
     updateProductDto: UpdateProductDto,
     userId: string,
-  ): Promise<ProductDocument> {
+  ): Promise<ProductResponse> {
     const product = await this.productsRepository.update(
       id,
       updateProductDto,
@@ -105,7 +115,7 @@ export class ProductsService {
       throw new NotFoundException(`Product ${id} was not found`);
     }
     this.logger.log(`Updated product ${product.id}`);
-    return product;
+    return (await this.withInventory([product]))[0]!;
   }
 
   async remove(id: string, userId: string): Promise<ProductDocument> {
@@ -113,8 +123,27 @@ export class ProductsService {
     if (!product) {
       throw new NotFoundException(`Product ${id} was not found`);
     }
+    await this.inventoryService.deleteByProductId(id);
     this.logger.log(`Deleted product ${product.id}`);
     return product;
+  }
+
+  private async withInventory(
+    products: ProductDocument[],
+  ): Promise<ProductResponse[]> {
+    const inventoryByProductId =
+      await this.inventoryService.getQuantitiesByProductIds(
+        products.map((product) => product._id.toString()),
+      );
+    return products.map((product) => {
+      const inventory =
+        inventoryByProductId.get(product._id.toString()) ?? null;
+      return Object.assign(product.toObject(), {
+        inventory,
+        availabilityStatus:
+          inventory?.availabilityStatus ?? 'Out of Stock',
+      });
+    });
   }
 
   private validateModifiedDateRange(query: ListProductsQueryDto): void {

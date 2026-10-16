@@ -7,7 +7,8 @@ import {
 } from '@nestjs/common';
 import mongoose from 'mongoose';
 import { UserRole } from '../common/enums/auth.enum.js';
-import type { AuthUserResponse } from '../auth/auth.types.js';
+import type { AuthPrincipal } from '../auth/auth.types.js';
+import { InventoryService } from '../inventory/inventory.service.js';
 import type { ProductDocument } from '../products/schemas/product.schema.js';
 import { ListCartsQueryDto } from './dto/list-carts-query.dto.js';
 import { UpdateCartProductDto } from './dto/update-cart-product.dto.js';
@@ -39,10 +40,13 @@ export interface CartResponse {
 
 @Injectable()
 export class CartsService {
-  constructor(private readonly cartsRepository: CartsRepository) {}
+  constructor(
+    private readonly cartsRepository: CartsRepository,
+    private readonly inventoryService: InventoryService,
+  ) {}
 
   async findAll(
-    user: AuthUserResponse,
+    user: AuthPrincipal,
     query: ListCartsQueryDto,
   ): Promise<CartResponse[]> {
     if (user.role !== UserRole.ADMIN) {
@@ -53,7 +57,7 @@ export class CartsService {
     return carts.map((cart) => toCartResponse(cart, products));
   }
 
-  async findMine(user: AuthUserResponse): Promise<CartResponse> {
+  async findMine(user: AuthPrincipal): Promise<CartResponse> {
     this.assertCartRole(user);
     const cart = await this.cartsRepository.findByUserId(user.id);
     if (!cart) {
@@ -65,12 +69,12 @@ export class CartsService {
   async putProductInMine(
     productId: string,
     dto: UpdateCartProductDto,
-    user: AuthUserResponse,
+    user: AuthPrincipal,
   ): Promise<CartResponse> {
     this.assertCartRole(user);
+    await this.findProduct(productId);
+    await this.ensureStock(productId, dto.quantity);
     const cart = await this.cartsRepository.findOrCreateByUserId(user.id);
-    const product = await this.findProduct(productId);
-    this.ensureStock(product, dto.quantity);
 
     const updatedCart = await this.saveWithConflict(() =>
       this.cartsRepository.putProductQuantity(
@@ -84,7 +88,7 @@ export class CartsService {
 
   async removeProductFromMine(
     productId: string,
-    user: AuthUserResponse,
+    user: AuthPrincipal,
   ): Promise<CartResponse> {
     this.assertCartRole(user);
     const cart = await this.cartsRepository.findByUserId(user.id);
@@ -100,7 +104,7 @@ export class CartsService {
     return toCartResponse(updatedCart, await this.getProductMap([updatedCart]));
   }
 
-  private assertCartRole(user: AuthUserResponse): void {
+  private assertCartRole(user: AuthPrincipal): void {
     if (user.role !== UserRole.BUYER && user.role !== UserRole.ADMIN) {
       throw new ForbiddenException('Only buyers and admins can access carts');
     }
@@ -114,10 +118,12 @@ export class CartsService {
     return product;
   }
 
-  private ensureStock(product: ProductDocument, quantity: number): void {
-    if (quantity > product.stock) {
+  private async ensureStock(productId: string, quantity: number): Promise<void> {
+    const availableQuantity =
+      await this.inventoryService.getAvailableQuantity(productId);
+    if (quantity > availableQuantity) {
       throw new BadRequestException(
-        `Requested quantity exceeds available stock for ${product.title}`,
+        `Requested quantity exceeds available inventory (${availableQuantity})`,
       );
     }
   }

@@ -16,7 +16,7 @@ import {
 } from '@nestjs/swagger';
 import { AccessTokenGuard } from '../auth/access-token.guard.js';
 import { CurrentUser } from '../auth/auth-user.decorator.js';
-import type { AuthUserResponse } from '../auth/auth.types.js';
+import type { AuthPrincipal } from '../auth/auth.types.js';
 import { Roles } from '../auth/roles.decorator.js';
 import { RolesGuard } from '../auth/roles.guard.js';
 import { UserRole } from '../common/enums/auth.enum.js';
@@ -38,7 +38,7 @@ export class CartsController {
   @ApiOperation({ summary: 'List all carts (admin only)' })
   @ApiOkResponse()
   findAll(
-    @CurrentUser() user: AuthUserResponse,
+    @CurrentUser() user: AuthPrincipal,
     @Query() query: ListCartsQueryDto,
   ) {
     return this.cartsService.findAll(user, query);
@@ -46,7 +46,7 @@ export class CartsController {
 
   @Get('me')
   @ApiOperation({ summary: "Get the current user's cart" })
-  findMine(@CurrentUser() user: AuthUserResponse) {
+  findMine(@CurrentUser() user: AuthPrincipal) {
     return this.cartsService.findMine(user);
   }
 
@@ -57,7 +57,7 @@ export class CartsController {
   putProductInMine(
     @Param('productId', ParseObjectIdPipe) productId: string,
     @Body() dto: UpdateCartProductDto,
-    @CurrentUser() user: AuthUserResponse,
+    @CurrentUser() user: AuthPrincipal,
   ) {
     return this.cartsService.putProductInMine(productId, dto, user);
   }
@@ -68,7 +68,7 @@ export class CartsController {
   })
   removeProductFromMine(
     @Param('productId', ParseObjectIdPipe) productId: string,
-    @CurrentUser() user: AuthUserResponse,
+    @CurrentUser() user: AuthPrincipal,
   ) {
     return this.cartsService.removeProductFromMine(productId, user);
   }

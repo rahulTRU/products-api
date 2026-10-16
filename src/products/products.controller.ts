@@ -17,7 +17,10 @@ import {
 } from '@nestjs/swagger';
 import { AccessTokenGuard } from '../auth/access-token.guard.js';
 import { CurrentUser } from '../auth/auth-user.decorator.js';
-import type { AuthUserResponse } from '../auth/auth.types.js';
+import type { AuthPrincipal } from '../auth/auth.types.js';
+import { Roles } from '../auth/roles.decorator.js';
+import { RolesGuard } from '../auth/roles.guard.js';
+import { UserRole } from '../common/enums/auth.enum.js';
 import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { ListProductsQueryDto } from './dto/list-products-query.dto.js';
@@ -73,7 +76,7 @@ export class ProductsController {
   @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiQuery({ name: 'skip', required: false, example: 0 })
   findMine(
-    @CurrentUser() user: AuthUserResponse,
+    @CurrentUser() user: AuthPrincipal,
     @Query() query: ListProductsQueryDto,
   ) {
     return this.productsService.findMine(user.id, query);
@@ -106,32 +109,35 @@ export class ProductsController {
   }
 
   @Post()
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
   @ApiBearerAuth()
   create(
     @Body() createProductDto: CreateProductDto,
-    @CurrentUser() user: AuthUserResponse,
+    @CurrentUser() user: AuthPrincipal,
   ) {
     return this.productsService.create(createProductDto, user.id);
   }
 
   @Patch(':id')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
   @ApiBearerAuth()
   update(
     @Param('id', ParseObjectIdPipe) id: string,
     @Body() updateProductDto: UpdateProductDto,
-    @CurrentUser() user: AuthUserResponse,
+    @CurrentUser() user: AuthPrincipal,
   ) {
     return this.productsService.update(id, updateProductDto, user.id);
   }
 
   @Delete(':id')
-  @UseGuards(AccessTokenGuard)
+  @UseGuards(AccessTokenGuard, RolesGuard)
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
   @ApiBearerAuth()
   remove(
     @Param('id', ParseObjectIdPipe) id: string,
-    @CurrentUser() user: AuthUserResponse,
+    @CurrentUser() user: AuthPrincipal,
   ) {
     return this.productsService.remove(id, user.id);
   }

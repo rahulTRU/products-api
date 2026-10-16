@@ -135,12 +135,6 @@ export class CreateProductDto {
   @Max(5)
   rating?: number;
 
-  @ApiProperty({ example: 99, minimum: 0 })
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  stock!: number;
-
   @ApiPropertyOptional({ type: [String], example: ['beauty', 'mascara'] })
   @IsOptional()
   @IsArray()
@@ -179,11 +173,6 @@ export class CreateProductDto {
   @IsOptional()
   @IsString()
   shippingInformation?: string;
-
-  @ApiPropertyOptional({ example: 'In Stock' })
-  @IsOptional()
-  @IsString()
-  availabilityStatus?: string;
 
   @ApiPropertyOptional({ type: [ProductReviewDto] })
   @IsOptional()

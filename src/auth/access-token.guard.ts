@@ -6,19 +6,18 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Request } from 'express';
-import { TokenType } from '../common/enums/auth.enum.js';
-import { AuthService } from './auth.service.js';
-import { AuthUserResponse, TokenPayload } from './auth.types.js';
+import { isValidObjectId } from 'mongoose';
+import type { Request } from 'express';
+import { TokenType, UserRole } from '../common/enums/auth.enum.js';
+import type { AuthPrincipal, TokenPayload } from './auth.types.js';
 
-type AuthenticatedRequest = Request & { user: AuthUserResponse };
+type AuthenticatedRequest = Request & { user: AuthPrincipal };
 
 @Injectable()
 export class AccessTokenGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
-    private readonly authService: AuthService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -41,10 +40,18 @@ export class AccessTokenGuard implements CanActivate {
       throw new UnauthorizedException('Invalid or expired access token');
     }
 
-    if (payload.type !== TokenType.ACCESS) {
+    if (payload.type !== TokenType.ACCESS || !isValidObjectId(payload.sub)) {
       throw new UnauthorizedException('Invalid access token');
     }
-    request.user = await this.authService.getAuthUser(payload.sub);
+    if (!payload.role) {
+      throw new UnauthorizedException(
+        'Access token is outdated; sign in again',
+      );
+    }
+    if (!Object.values(UserRole).includes(payload.role)) {
+      throw new UnauthorizedException('Invalid access token');
+    }
+    request.user = { id: payload.sub, role: payload.role };
     return true;
   }
 }

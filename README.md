@@ -44,6 +44,54 @@ $ npm run start:dev
 $ npm run start:prod
 ```
 
+## Application diagnostics
+
+HTTP route handlers have a global two-minute timeout. A handler that exceeds
+the limit returns `504 Gateway Timeout`; this bounds how long the client waits
+but does not cancel a database operation that is already running.
+Each HTTP request is logged on arrival and completion with its start timestamp,
+method, path, response status, duration, request query/body, and response body.
+Sensitive fields such as passwords, tokens, cookies, secrets, email addresses,
+and phone numbers are redacted, and payloads are bounded to avoid oversized
+log entries.
+
+## Access-token authorization
+
+Protected routes authorize using the user ID and role in the signed access
+token instead of querying the user collection on every request. Existing
+access tokens without a role claim must be replaced by signing in again. Role
+changes take effect when a new access token is issued.
+
+## Inventory
+
+Product stock is stored in the inventory collection rather than on product
+documents. On startup, the application migrates valid legacy `stock` values
+from existing products into inventory and removes the old field. The migration
+preserves existing inventory records if it is run again.
+Product `availabilityStatus` is derived from inventory quantity (`In Stock`
+when quantity is above zero, otherwise `Out of Stock`) and is no longer stored
+on product documents or accepted in product create/update requests.
+
+Create a product first, then create its inventory as a seller (for your own
+product) or admin:
+
+```http
+POST /inventory
+Content-Type: application/json
+
+{
+  "productId": "<product MongoDB _id>",
+  "quantity": 54
+}
+```
+
+Update quantity with `PATCH /inventory/:productId` and a body such as
+`{"quantity": 40}`. Admins can list all inventory with `GET /inventory`;
+sellers see only their own records. `GET /inventory/me` is also available for
+sellers. Product responses include an `inventory` summary, and cart quantity
+updates are rejected if they exceed the available inventory. Adding a product
+to a cart does not reserve or deduct inventory.
+
 ## Run tests
 
 ```bash

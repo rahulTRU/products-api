@@ -16,7 +16,13 @@ export interface AuthResponse extends AuthUserResponse {
   refreshToken: string;
 }
 
+export interface AuthPrincipal {
+  id: string;
+  role: UserRole;
+}
+
 export interface TokenPayload {
   sub: string;
   type: 'access' | 'refresh';
+  role?: UserRole;
 }

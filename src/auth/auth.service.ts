@@ -126,6 +126,7 @@ export class AuthService {
     const payload: TokenPayload = {
       sub: String(user._id),
       type: TokenType.ACCESS,
+      role: user.role,
     };
     const refreshPayload: TokenPayload = {
       sub: String(user._id),

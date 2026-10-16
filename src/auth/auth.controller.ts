@@ -30,7 +30,11 @@ import {
 } from './dto/auth-response.dto.js';
 import { LoginDto } from './dto/login.dto.js';
 import { SignupDto } from './dto/signup.dto.js';
-import type { AuthResponse, AuthUserResponse } from './auth.types.js';
+import type {
+  AuthPrincipal,
+  AuthResponse,
+  AuthUserResponse,
+} from './auth.types.js';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -106,7 +110,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Log out and revoke the refresh token' })
   @ApiOkResponse({ description: 'Logged out' })
   async logout(
-    @CurrentUser() user: AuthUserResponse,
+    @CurrentUser() user: AuthPrincipal,
     @Res({ passthrough: true }) response: Response,
   ): Promise<{ message: string }> {
     await this.authService.logout(user.id);
@@ -124,8 +128,10 @@ export class AuthController {
     type: AuthUserResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'Missing or invalid access token' })
-  getCurrentUser(@CurrentUser() user: AuthUserResponse): AuthUserResponse {
-    return user;
+  getCurrentUser(
+    @CurrentUser() user: AuthPrincipal,
+  ): Promise<AuthUserResponse> {
+    return this.authService.getAuthUser(user.id);
   }
 }
 

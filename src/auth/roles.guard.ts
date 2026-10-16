@@ -1,15 +1,16 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { UserRole } from '../common/enums/auth.enum.js';
-import type { AuthUserResponse } from './auth.types.js';
+import type { AuthPrincipal } from './auth.types.js';
 import { ROLES_KEY } from './roles.decorator.js';
 
-type AuthenticatedRequest = Request & { user: AuthUserResponse };
+type AuthenticatedRequest = Request & { user: AuthPrincipal };
 
 @Injectable()
 export class RolesGuard implements CanActivate {
@@ -25,6 +26,11 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    return roles.includes(request.user.role);
+    if (!roles.includes(request.user.role)) {
+      throw new ForbiddenException(
+        `Role ${roles.join(' or ')} required to access this resource`,
+      );
+    }
+    return true;
   }
 }

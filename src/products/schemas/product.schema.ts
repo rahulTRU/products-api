@@ -87,9 +87,6 @@ export class Product {
   @Prop({ min: 0, max: 5 })
   rating?: number;
 
-  @Prop({ required: true, min: 0 })
-  stock!: number;
-
   @Prop({ type: [String], default: [] })
   tags!: string[];
 
@@ -110,9 +107,6 @@ export class Product {
 
   @Prop({ trim: true })
   shippingInformation?: string;
-
-  @Prop({ trim: true })
-  availabilityStatus?: string;
 
   @Prop({ type: [ProductReviewSchema], default: [] })
   reviews!: ProductReview[];

@@ -25,6 +25,7 @@ import { ParseObjectIdPipe } from '../common/pipes/parse-object-id.pipe.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { ListProductsQueryDto } from './dto/list-products-query.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
+import { PRODUCT_SELECTABLE_FIELDS } from './product-selection.js';
 import { ProductsService } from './products.service.js';
 
 @Controller('products')
@@ -60,6 +61,12 @@ export class ProductsController {
   @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiQuery({ name: 'skip', required: false, example: 0 })
   @ApiQuery({
+    name: 'select',
+    required: false,
+    example: 'title,price',
+    description: `Comma-separated product fields to return. Allowed: ${PRODUCT_SELECTABLE_FIELDS.join(', ')}`,
+  })
+  @ApiQuery({
     name: 'offset',
     required: false,
     deprecated: true,
@@ -75,6 +82,12 @@ export class ProductsController {
   @ApiOperation({ summary: 'List products created by the current user' })
   @ApiQuery({ name: 'limit', required: false, example: 20 })
   @ApiQuery({ name: 'skip', required: false, example: 0 })
+  @ApiQuery({
+    name: 'select',
+    required: false,
+    example: 'title,price',
+    description: `Comma-separated product fields to return. Allowed: ${PRODUCT_SELECTABLE_FIELDS.join(', ')}`,
+  })
   findMine(
     @CurrentUser() user: AuthPrincipal,
     @Query() query: ListProductsQueryDto,
@@ -94,6 +107,12 @@ export class ProductsController {
   @UseGuards(AccessTokenGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List products in a category' })
+  @ApiQuery({
+    name: 'select',
+    required: false,
+    example: 'title,price',
+    description: `Comma-separated product fields to return. Allowed: ${PRODUCT_SELECTABLE_FIELDS.join(', ')}`,
+  })
   findByCategory(
     @Param('category') category: string,
     @Query() query: ListProductsQueryDto,
@@ -104,8 +123,17 @@ export class ProductsController {
   @Get(':id')
   @UseGuards(AccessTokenGuard)
   @ApiBearerAuth()
-  findOne(@Param('id', ParseObjectIdPipe) id: string) {
-    return this.productsService.findOne(id);
+  @ApiQuery({
+    name: 'select',
+    required: false,
+    example: 'title,price',
+    description: `Comma-separated product fields to return. Allowed: ${PRODUCT_SELECTABLE_FIELDS.join(', ')}`,
+  })
+  findOne(
+    @Param('id', ParseObjectIdPipe) id: string,
+    @Query('select') select?: string,
+  ) {
+    return this.productsService.findOne(id, select);
   }
 
   @Post()

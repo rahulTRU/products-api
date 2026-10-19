@@ -9,6 +9,11 @@ import type { InventorySummary } from '../inventory/inventory.service.js';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { ListProductsQueryDto } from './dto/list-products-query.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
+import {
+  parseProductSelection,
+  projectProductResponse,
+  type ProductSelectableField,
+} from './product-selection.js';
 import type { ProductDocument } from './schemas/product.schema.js';
 import { ProductsRepository } from './products.repository.js';
 
@@ -16,6 +21,7 @@ type ProductResponse = ReturnType<ProductDocument['toObject']> & {
   inventory: InventorySummary | null;
   availabilityStatus: InventorySummary['availabilityStatus'];
 };
+type SelectedProductResponse = ProductResponse | Record<string, unknown>;
 
 @Injectable()
 export class ProductsService {
@@ -26,27 +32,37 @@ export class ProductsService {
     private readonly inventoryService: InventoryService,
   ) {}
 
-  async findAll(query: ListProductsQueryDto): Promise<ProductResponse[]> {
+  async findAll(query: ListProductsQueryDto): Promise<SelectedProductResponse[]> {
     this.validateModifiedDateRange(query);
-    const { limit, skip, offset, ...filters } = query;
+    const { limit, skip, offset, select, ...filters } = query;
+    const selectedFields = parseProductSelection(select);
     return this.withInventory(
-      await this.productsRepository.findAll(filters, limit, skip ?? offset ?? 0),
+      await this.productsRepository.findAll(
+        filters,
+        limit,
+        skip ?? offset ?? 0,
+        selectedFields,
+      ),
+      selectedFields,
     );
   }
 
   async findMine(
     userId: string,
     query: ListProductsQueryDto,
-  ): Promise<ProductResponse[]> {
+  ): Promise<SelectedProductResponse[]> {
     this.validateModifiedDateRange(query);
-    const { limit, skip, offset, ...filters } = query;
+    const { limit, skip, offset, select, ...filters } = query;
+    const selectedFields = parseProductSelection(select);
     return this.withInventory(
       await this.productsRepository.findMine(
         userId,
         filters,
         limit,
         skip ?? offset ?? 0,
+        selectedFields,
       ),
+      selectedFields,
     );
   }
 
@@ -57,7 +73,7 @@ export class ProductsService {
   async findByCategory(
     category: string,
     query: ListProductsQueryDto,
-  ): Promise<ProductResponse[]> {
+  ): Promise<SelectedProductResponse[]> {
     const normalizedCategory = category.trim().toLowerCase();
     if (!(await this.productsRepository.existsInCategory(normalizedCategory))) {
       throw new NotFoundException(
@@ -65,6 +81,7 @@ export class ProductsService {
       );
     }
     this.validateModifiedDateRange(query);
+    const selectedFields = parseProductSelection(query.select);
     return this.withInventory(
       await this.productsRepository.findAll(
         {
@@ -77,16 +94,22 @@ export class ProductsService {
         },
         query.limit,
         query.skip ?? query.offset ?? 0,
+        selectedFields,
       ),
+      selectedFields,
     );
   }
 
-  async findOne(id: string): Promise<ProductResponse> {
-    const product = await this.productsRepository.findById(id);
+  async findOne(
+    id: string,
+    select?: string,
+  ): Promise<SelectedProductResponse> {
+    const selectedFields = parseProductSelection(select);
+    const product = await this.productsRepository.findById(id, selectedFields);
     if (!product) {
       throw new NotFoundException(`Product ${id} was not found`);
     }
-    return (await this.withInventory([product]))[0]!;
+    return (await this.withInventory([product], selectedFields))[0]!;
   }
 
   async create(
@@ -128,21 +151,39 @@ export class ProductsService {
     return product;
   }
 
+  private withInventory(products: ProductDocument[]): Promise<ProductResponse[]>;
+  private withInventory(
+    products: ProductDocument[],
+    selectedFields: ProductSelectableField[],
+  ): Promise<Record<string, unknown>[]>;
+  private withInventory(
+    products: ProductDocument[],
+    selectedFields: ProductSelectableField[] | undefined,
+  ): Promise<SelectedProductResponse[]>;
   private async withInventory(
     products: ProductDocument[],
-  ): Promise<ProductResponse[]> {
-    const inventoryByProductId =
-      await this.inventoryService.getQuantitiesByProductIds(
-        products.map((product) => product._id.toString()),
-      );
+    selectedFields?: ProductSelectableField[],
+  ): Promise<SelectedProductResponse[]> {
+    const needsInventory =
+      !selectedFields ||
+      selectedFields.includes('inventory') ||
+      selectedFields.includes('availabilityStatus');
+    const inventoryByProductId = needsInventory
+      ? await this.inventoryService.getQuantitiesByProductIds(
+          products.map((product) => product._id.toString()),
+        )
+      : new Map<string, InventorySummary>();
     return products.map((product) => {
       const inventory =
         inventoryByProductId.get(product._id.toString()) ?? null;
-      return Object.assign(product.toObject(), {
+      const response = Object.assign(product.toObject(), {
         inventory,
         availabilityStatus:
           inventory?.availabilityStatus ?? 'Out of Stock',
       });
+      return selectedFields
+        ? projectProductResponse(response, selectedFields)
+        : response;
     });
   }
 

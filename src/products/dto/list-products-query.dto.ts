@@ -5,11 +5,17 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  MaxLength,
   Max,
   Min,
 } from 'class-validator';
 
 export class ListProductsQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  select?: string;
+
   @IsOptional()
   @IsString()
   category?: string;

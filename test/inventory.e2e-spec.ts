@@ -199,19 +199,29 @@ describe('Inventory controller HTTP and Swagger contract (e2e)', () => {
     expect(service.findMine).not.toHaveBeenCalled();
   });
 
-  it.each([UserRole.BUYER, UserRole.ADMIN])(
-    'rejects %s from GET /inventory/me before the handler',
-    async (role) => {
-      const token = await tokenFor(role);
+  it('allows an admin on GET /inventory/me because the route permits sellers and admins', async () => {
+    const token = await tokenFor(UserRole.ADMIN);
 
-      await request(app.getHttpServer())
-        .get('/inventory/me')
-        .set('Authorization', `Bearer ${token}`)
-        .expect(403);
+    await request(app.getHttpServer())
+      .get('/inventory/me')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200)
+      .expect(responseBody);
 
-      expect(service.findMine).not.toHaveBeenCalled();
-    },
-  );
+    expect(service.findMine).toHaveBeenCalledOnce();
+  });
+
+  it('rejects a buyer from GET /inventory/me before the handler', async () => {
+    const role = UserRole.BUYER;
+    const token = await tokenFor(role);
+
+    await request(app.getHttpServer())
+      .get('/inventory/me')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(403);
+
+    expect(service.findMine).not.toHaveBeenCalled();
+  });
 
   it('rejects missing, invalid, and expired JWTs before the handler', async () => {
     await request(app.getHttpServer()).get('/inventory/me').expect(401);

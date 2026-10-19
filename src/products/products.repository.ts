@@ -4,11 +4,15 @@ import { Model, QueryFilter, Types } from 'mongoose';
 import { CreateProductDto } from './dto/create-product.dto.js';
 import { ListProductsQueryDto } from './dto/list-products-query.dto.js';
 import { UpdateProductDto } from './dto/update-product.dto.js';
+import {
+  productProjection,
+  type ProductSelectableField,
+} from './product-selection.js';
 import { Product, ProductDocument } from './schemas/product.schema.js';
 
 type ProductListFilters = Omit<
   ListProductsQueryDto,
-  'limit' | 'offset' | 'skip'
+  'limit' | 'offset' | 'skip' | 'select'
 >;
 
 @Injectable()
@@ -22,8 +26,15 @@ export class ProductsRepository {
     filters: ProductListFilters,
     limit: number,
     skip: number,
+    select?: ProductSelectableField[],
   ): Promise<ProductDocument[]> {
-    return this.findWithFilter(this.buildFilter(filters), filters, limit, skip);
+    return this.findWithFilter(
+      this.buildFilter(filters),
+      filters,
+      limit,
+      skip,
+      select,
+    );
   }
 
   findMine(
@@ -31,6 +42,7 @@ export class ProductsRepository {
     filters: ProductListFilters,
     limit: number,
     skip: number,
+    select?: ProductSelectableField[],
   ): Promise<ProductDocument[]> {
     return this.findWithFilter(
       {
@@ -40,6 +52,7 @@ export class ProductsRepository {
       filters,
       limit,
       skip,
+      select,
     );
   }
 
@@ -58,8 +71,15 @@ export class ProductsRepository {
     );
   }
 
-  findById(id: string): Promise<ProductDocument | null> {
-    return this.productModel.findById(id).exec();
+  findById(
+    id: string,
+    select?: ProductSelectableField[],
+  ): Promise<ProductDocument | null> {
+    const query = this.productModel.findById(id);
+    if (select) {
+      query.select(productProjection(select));
+    }
+    return query.exec();
   }
 
   create(product: CreateProductDto, userId: string): Promise<ProductDocument> {
@@ -122,13 +142,17 @@ export class ProductsRepository {
     filters: ProductListFilters,
     limit: number,
     skip: number,
+    select?: ProductSelectableField[],
   ): Promise<ProductDocument[]> {
-    return this.productModel
+    const query = this.productModel
       .find(filter)
       .sort({ [filters.sortBy]: filters.order === 'asc' ? 1 : -1 })
       .skip(skip)
-      .limit(limit)
-      .exec();
+      .limit(limit);
+    if (select) {
+      query.select(productProjection(select));
+    }
+    return query.exec();
   }
 }
 

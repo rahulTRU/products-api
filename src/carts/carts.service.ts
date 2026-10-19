@@ -71,7 +71,6 @@ export class CartsService {
     dto: UpdateCartProductDto,
     user: AuthPrincipal,
   ): Promise<CartResponse> {
-    this.assertCartRole(user);
     await this.findProduct(productId);
     await this.ensureStock(productId, dto.quantity);
     const cart = await this.cartsRepository.findOrCreateByUserId(user.id);

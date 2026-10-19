@@ -64,6 +64,14 @@ changes take effect when a new access token is issued.
 
 ## Inventory
 
+Product list and single-product read routes accept a `select` query parameter
+to return only requested public fields. For example,
+`GET /products?select=title,price` and
+`GET /products/<productId>?select=title,price` return only those fields.
+Comma-separated selections are validated against the product response
+allowlist; MongoDB operators, nested paths, and internal fields are rejected
+with `400 Bad Request`.
+
 Product stock is stored in the inventory collection rather than on product
 documents. On startup, the application migrates valid legacy `stock` values
 from existing products into inventory and removes the old field. The migration

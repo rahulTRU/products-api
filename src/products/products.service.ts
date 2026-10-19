@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   Logger,
   NotFoundException,
@@ -112,6 +113,10 @@ export class ProductsService {
     return (await this.withInventory([product], selectedFields))[0]!;
   }
 
+  findOffers(productId: string) {
+    return this.inventoryService.getOffersByProductId(productId);
+  }
+
   async create(
     createProductDto: CreateProductDto,
     userId: string,
@@ -142,6 +147,18 @@ export class ProductsService {
   }
 
   async remove(id: string, userId: string): Promise<ProductDocument> {
+    const ownedProduct = await this.productsRepository.findOneForOwner(
+      id,
+      userId,
+    );
+    if (!ownedProduct) {
+      throw new NotFoundException(`Product ${id} was not found`);
+    }
+    if (await this.inventoryService.hasOffersForProduct(id)) {
+      throw new ConflictException(
+        'Remove all business offers for this product before deleting it',
+      );
+    }
     const product = await this.productsRepository.delete(id, userId);
     if (!product) {
       throw new NotFoundException(`Product ${id} was not found`);

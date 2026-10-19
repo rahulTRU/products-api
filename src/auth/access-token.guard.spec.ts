@@ -41,6 +41,7 @@ describe('AccessTokenGuard', () => {
     expect(request).toHaveProperty('user', {
       id: '6ad241c4518543c0e9ca45c7',
       role: 'buyer',
+      sellerEnabled: false,
     });
   });
 

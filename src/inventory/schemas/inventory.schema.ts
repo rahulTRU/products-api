@@ -19,14 +19,27 @@ export class Inventory {
   })
   sellerId!: Types.ObjectId | null;
 
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Business',
+    default: null,
+  })
+  businessId!: Types.ObjectId | null;
+
+  @Prop({ min: 0 })
+  unitPrice?: number;
+
   @Prop({ required: true, min: 0, default: 0 })
   quantity!: number;
+
+  @Prop({ required: true, min: 0, default: 0 })
+  reservedQuantity!: number;
 
   createdAt!: Date;
   updatedAt!: Date;
 }
 
 export const InventorySchema = SchemaFactory.createForClass(Inventory);
-InventorySchema.index({ productId: 1 }, { unique: true });
+InventorySchema.index({ productId: 1, businessId: 1 }, { unique: true });
 InventorySchema.index({ updatedAt: -1, _id: -1 });
 InventorySchema.index({ sellerId: 1, updatedAt: -1, _id: -1 });

@@ -33,6 +33,7 @@ describe('AddressesService', () => {
     create: ReturnType<typeof vi.fn>;
     updateForUser: ReturnType<typeof vi.fn>;
     deleteForUser: ReturnType<typeof vi.fn>;
+    isUsedByBusiness: ReturnType<typeof vi.fn>;
   };
   let service: AddressesService;
 
@@ -43,6 +44,7 @@ describe('AddressesService', () => {
       create: vi.fn().mockResolvedValue(addressDocument()),
       updateForUser: vi.fn().mockResolvedValue(addressDocument()),
       deleteForUser: vi.fn().mockResolvedValue(true),
+      isUsedByBusiness: vi.fn().mockResolvedValue(false),
     };
     service = new AddressesService(
       repository as unknown as AddressesRepository,
@@ -107,5 +109,16 @@ describe('AddressesService', () => {
     await expect(
       service.remove('65cb7f4a2d8b4c001f3e7a91', USER),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('prevents deleting an address referenced by a business', async () => {
+    repository.isUsedByBusiness.mockResolvedValue(true);
+
+    await expect(
+      service.remove('65cb7f4a2d8b4c001f3e7a91', USER),
+    ).rejects.toThrow(
+      'Remove this address from its business service areas before deleting it',
+    );
+    expect(repository.deleteForUser).not.toHaveBeenCalled();
   });
 });

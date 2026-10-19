@@ -68,8 +68,13 @@ export class CartsController {
   })
   removeProductFromMine(
     @Param('productId', ParseObjectIdPipe) productId: string,
+    @Query('businessId') businessId: string,
     @CurrentUser() user: AuthPrincipal,
   ) {
-    return this.cartsService.removeProductFromMine(productId, user);
+    return this.cartsService.removeProductFromMine(
+      productId,
+      businessId,
+      user,
+    );
   }
 }

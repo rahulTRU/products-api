@@ -80,8 +80,32 @@ Product `availabilityStatus` is derived from inventory quantity (`In Stock`
 when quantity is above zero, otherwise `Out of Stock`) and is no longer stored
 on product documents or accepted in product create/update requests.
 
-Create a product first, then create its inventory as a seller (for your own
-product) or admin:
+Every account can buy by default. Creating a business enables the additional
+seller capability without removing buyer access. Businesses are owned through
+`Business.ownerId`; login and `GET /auth/me` derive the owner's business list
+from that relationship. Create a business with one or more address IDs already
+owned by the current user:
+
+```http
+POST /businesses
+Content-Type: application/json
+
+{
+  "businessName": "Rahul Fresh Store",
+  "addressIds": ["<owner address MongoDB _id>"]
+}
+```
+
+Business creation sets `sellerEnabled` on the account. The access JWT already
+issued before business creation does not gain the new claim; call
+`POST /auth/refresh` with the refresh token (or sign in again) before using
+seller-only routes.
+
+The catalog `Product` is shared; a business offer is represented by an
+inventory record keyed by product and business, with that business's INR price,
+stock, and reserved quantity. A business owner may offer any catalog product.
+List offers (including the business name and its configured service addresses)
+with `GET /products/:productId/offers`. Create and update offers as the owner:
 
 ```http
 POST /inventory
@@ -89,16 +113,59 @@ Content-Type: application/json
 
 {
   "productId": "<product MongoDB _id>",
+  "businessId": "<owned business MongoDB _id>",
+  "unitPrice": 54.00,
   "quantity": 54
 }
 ```
 
-Update quantity with `PATCH /inventory/:productId` and a body such as
-`{"quantity": 40}`. Admins can list all inventory with `GET /inventory`;
-sellers see only their own records. `GET /inventory/me` is also available for
-sellers. Product responses include an `inventory` summary, and cart quantity
-updates are rejected if they exceed the available inventory. Adding a product
-to a cart does not reserve or deduct inventory.
+`PATCH /inventory/:productId?businessId=<businessId>` updates the offer's stock
+and optional price; `DELETE` on that URL removes the offer. Stock available to
+buyers is `quantity - reservedQuantity`. A catalog product cannot be deleted
+while any business has an offer for it. Legacy inventory without a business
+association is preserved, but must be re-listed under a business to be
+available as a buyer-selectable offer.
+
+Cart entries identify both product and business, so the same product can be
+added from different sellers. Send `businessId` in
+`PUT /carts/me/products/:productId`; cart responses include the business name,
+seller-specific price, and item totals. Adding to a cart checks current offer
+stock but does not reserve it.
+Business service addresses must remain owned by the business owner and cannot
+be deleted while referenced by a business. Remove an address from the
+business's configured address list first.
+
+### Orders, payments, and sales
+
+`GET /orders/delivery-windows?timeZone=Asia/Kolkata` returns hourly windows
+whose starts are at least two hours in the future. Checkout verifies the
+selected address and that every seller's configured service addresses share
+the buyer's country and either city or state. Each seller delivery is separate
+under the order, but uses the single selected one-hour delivery window.
+
+`POST /orders` accepts the buyer's `addressId`, `deliveryWindowStart`, and
+`timeZone`. It revalidates cart products, offer prices, and stock; reserves
+each offer; snapshots the buyer address, business, and item details; and
+creates the corresponding seller deliveries and payment record. On simulated
+success, stock reservations are committed and the cart is cleared. On
+simulated failure, reservations are released and the failed order/payment are
+retained. This flow uses MongoDB transactions; the database must run as a
+replica set or a transaction-capable sharded cluster.
+
+Payments are fake and never move real funds. Set
+`FAKE_PAYMENT_RESULT=simulated_succeeded` (default) or
+`FAKE_PAYMENT_RESULT=simulated_failed` to exercise both outcomes. The fake
+gateway is disabled when `NODE_ENV=production`.
+
+Buyers can read their own orders with `GET /orders/me` and
+`GET /orders/:orderId`; payment records are available through
+`GET /payments/me` and `GET /payments/:paymentId`. Sellers can use
+`GET /seller/sales` for gross confirmed sales by business and product,
+quantities sold, order counts, and the order/payment IDs behind those totals.
+Amounts are INR and simulated; gross sales are not profit or a payout amount.
+Real payment capture, refunds, seller payouts, order editing, rescheduling,
+buyer order cancellation, and seller capacity/slot booking are not implemented
+by this MVP.
 
 ## Addresses
 

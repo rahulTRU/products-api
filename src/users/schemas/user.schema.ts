@@ -39,6 +39,9 @@ export class User {
   @Prop({ default: '' })
   image!: string;
 
+  @Prop({ type: Boolean, default: false })
+  sellerEnabled!: boolean;
+
   @Prop({
     type: MongooseSchema.Types.ObjectId,
     ref: 'Address',

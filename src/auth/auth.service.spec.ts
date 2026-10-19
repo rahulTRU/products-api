@@ -8,6 +8,7 @@ describe('AuthService current user response', () => {
   let authRepository: {
     findById: ReturnType<typeof vi.fn>;
     findOwnedAddressSummary: ReturnType<typeof vi.fn>;
+    findBusinessSummariesForOwner: ReturnType<typeof vi.fn>;
   };
   let service: AuthService;
 
@@ -25,6 +26,7 @@ describe('AuthService current user response', () => {
         latestSelectedAddressId: null,
       }),
       findOwnedAddressSummary: vi.fn(),
+      findBusinessSummariesForOwner: vi.fn().mockResolvedValue([]),
     };
     service = new AuthService(
       authRepository as unknown as AuthRepository,
@@ -64,6 +66,8 @@ describe('AuthService current user response', () => {
       gender: 'other',
       role: 'seller',
       image: '',
+      sellerEnabled: true,
+      businesses: [],
       latestSelectedAddress: {
         id: '65cb7f4a2d8b4c001f3e7a91',
         formattedAddress:

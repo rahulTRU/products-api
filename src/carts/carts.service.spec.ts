@@ -16,7 +16,13 @@ describe('CartsService', () => {
     const cart = {
       _id: new mongoose.Types.ObjectId(),
       userId: new mongoose.Types.ObjectId(),
-      products: [{ productId, quantity: 2 }],
+      products: [
+        {
+          productId,
+          businessId: new mongoose.Types.ObjectId(),
+          quantity: 2,
+        },
+      ],
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -25,9 +31,19 @@ describe('CartsService', () => {
       findOrCreateByUserId: vi.fn().mockResolvedValue(cart),
       putProductQuantity: vi.fn().mockResolvedValue(cart),
       findProductsByIds: vi.fn().mockResolvedValue([product]),
+      findBusinessesByIds: vi.fn().mockResolvedValue([
+        {
+          _id: cart.products[0]!.businessId,
+          businessName: 'Test Seller',
+        },
+      ]),
     };
     const inventoryService = {
-      getAvailableQuantity: vi.fn().mockResolvedValue(5),
+      getOfferForCart: vi.fn().mockResolvedValue({
+        id: String(new mongoose.Types.ObjectId()),
+        unitPrice: 9.99,
+        availableQuantity: 5,
+      }),
     };
     const service = new CartsService(
       repository as unknown as CartsRepository,
@@ -39,12 +55,21 @@ describe('CartsService', () => {
     await expect(
       service.putProductInMine(
         String(productId),
-        { quantity: 2 },
+        {
+          businessId: String(cart.products[0]!.businessId),
+          quantity: 2,
+        },
         { id: String(cart.userId), role: UserRole.SELLER },
       ),
     ).resolves.toMatchObject({
       userId: String(cart.userId),
-      products: [{ id: String(productId), quantity: 2 }],
+      products: [
+        {
+          id: String(productId),
+          businessId: String(cart.products[0]!.businessId),
+          quantity: 2,
+        },
+      ],
     });
     expect(repository.findOrCreateByUserId).toHaveBeenCalledWith(
       String(cart.userId),

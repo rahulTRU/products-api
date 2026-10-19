@@ -1,11 +1,21 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import type { AuthPrincipal } from '../auth/auth.types.js';
+import { Types } from 'mongoose';
+import type { Address } from './schemas/address.schema.js';
 import { CreateAddressDto } from './dto/create-address.dto.js';
 import { UpdateAddressDto } from './dto/update-address.dto.js';
 import { AddressesRepository } from './addresses.repository.js';
 import type { AddressDocument } from './schemas/address.schema.js';
 
-export type AddressResponse = ReturnType<AddressDocument['toObject']>;
+export type AddressResponse = Address & {
+  _id: Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 @Injectable()
 export class AddressesService {
@@ -14,6 +24,10 @@ export class AddressesService {
   async findAll(user: AuthPrincipal): Promise<AddressResponse[]> {
     const addresses = await this.addressesRepository.findByUserId(user.id);
     return addresses.map(toAddressResponse);
+  }
+
+  async findSummariesForUser(addressIds: string[], userId: string) {
+    return this.addressesRepository.findSummariesForUser(addressIds, userId);
   }
 
   async findOne(
@@ -56,6 +70,18 @@ export class AddressesService {
   }
 
   async remove(addressId: string, user: AuthPrincipal): Promise<void> {
+    const address = await this.addressesRepository.findOneForUser(
+      addressId,
+      user.id,
+    );
+    if (!address) {
+      throw new NotFoundException('Address was not found');
+    }
+    if (await this.addressesRepository.isUsedByBusiness(addressId)) {
+      throw new ConflictException(
+        'Remove this address from its business service areas before deleting it',
+      );
+    }
     const deleted = await this.addressesRepository.deleteForUser(
       addressId,
       user.id,
@@ -67,5 +93,5 @@ export class AddressesService {
 }
 
 function toAddressResponse(address: AddressDocument): AddressResponse {
-  return address.toObject();
+  return address.toObject() as AddressResponse;
 }

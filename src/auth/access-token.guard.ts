@@ -51,7 +51,12 @@ export class AccessTokenGuard implements CanActivate {
     if (!Object.values(UserRole).includes(payload.role)) {
       throw new UnauthorizedException('Invalid access token');
     }
-    request.user = { id: payload.sub, role: payload.role };
+    request.user = {
+      id: payload.sub,
+      role: payload.role,
+      sellerEnabled:
+        payload.sellerEnabled === true || payload.role === UserRole.SELLER,
+    };
     return true;
   }
 }

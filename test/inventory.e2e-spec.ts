@@ -168,7 +168,7 @@ describe('Inventory controller HTTP and Swagger contract (e2e)', () => {
       .expect(responseBody);
 
     expect(service.findAll).toHaveBeenCalledWith(
-      { id: SELLER_ID, role: UserRole.ADMIN },
+      { id: SELLER_ID, role: UserRole.ADMIN, sellerEnabled: false },
       expect.objectContaining({ limit: 17, skip: 4 }),
     );
   });
@@ -183,7 +183,7 @@ describe('Inventory controller HTTP and Swagger contract (e2e)', () => {
       .expect(responseBody);
 
     expect(service.findMine).toHaveBeenCalledWith(
-      { id: SELLER_ID, role: UserRole.SELLER },
+      { id: SELLER_ID, role: UserRole.SELLER, sellerEnabled: true },
       expect.objectContaining({ limit: 17, skip: 4 }),
     );
   });
@@ -242,19 +242,25 @@ describe('Inventory controller HTTP and Swagger contract (e2e)', () => {
   it('routes GET /inventory/:productId through its service', async () => {
     const token = await tokenFor(UserRole.SELLER);
     await request(app.getHttpServer())
-      .get(`/inventory/${PRODUCT_ID}`)
+      .get(`/inventory/${PRODUCT_ID}?businessId=65cb7f4a2d3b4c001f3e7a92`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200)
       .expect(responseBody);
-    expect(service.findByProductId).toHaveBeenCalledWith(PRODUCT_ID, {
-      id: SELLER_ID,
-      role: UserRole.SELLER,
-    });
+    expect(service.findByProductId).toHaveBeenCalledWith(
+      PRODUCT_ID,
+      '65cb7f4a2d3b4c001f3e7a92',
+      { id: SELLER_ID, role: UserRole.SELLER, sellerEnabled: true },
+    );
   });
 
   it('routes POST /inventory through its service', async () => {
     const token = await tokenFor(UserRole.SELLER);
-    const payload = { productId: PRODUCT_ID, quantity: 12 };
+    const payload = {
+      productId: PRODUCT_ID,
+      businessId: '65cb7f4a2d3b4c001f3e7a92',
+      unitPrice: 12.5,
+      quantity: 12,
+    };
     await request(app.getHttpServer())
       .post('/inventory')
       .set('Authorization', `Bearer ${token}`)
@@ -264,12 +270,16 @@ describe('Inventory controller HTTP and Swagger contract (e2e)', () => {
     expect(service.create).toHaveBeenCalledWith(payload, {
       id: SELLER_ID,
       role: UserRole.SELLER,
+      sellerEnabled: true,
     });
   });
 
   it('routes PATCH /inventory/:productId through its service', async () => {
     const token = await tokenFor(UserRole.SELLER);
-    const payload = { quantity: 8 };
+    const payload = {
+      businessId: '65cb7f4a2d3b4c001f3e7a92',
+      quantity: 8,
+    };
     await request(app.getHttpServer())
       .patch(`/inventory/${PRODUCT_ID}`)
       .set('Authorization', `Bearer ${token}`)
@@ -279,7 +289,7 @@ describe('Inventory controller HTTP and Swagger contract (e2e)', () => {
     expect(service.updateQuantity).toHaveBeenCalledWith(
       PRODUCT_ID,
       payload,
-      { id: SELLER_ID, role: UserRole.SELLER },
+      { id: SELLER_ID, role: UserRole.SELLER, sellerEnabled: true },
     );
   });
 });

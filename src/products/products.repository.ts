@@ -113,6 +113,16 @@ export class ProductsRepository {
       .exec();
   }
 
+  findOneForOwner(id: string, userId: string): Promise<ProductDocument | null> {
+    return this.productModel
+      .findOne({
+        _id: new Types.ObjectId(id),
+        createdBy: new Types.ObjectId(userId),
+      })
+      .select('+createdBy')
+      .exec();
+  }
+
   private buildFilter(filters: ProductListFilters): QueryFilter<Product> {
     const filter: QueryFilter<Product> = {};
     if (filters.category) {

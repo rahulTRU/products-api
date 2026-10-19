@@ -1,12 +1,24 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { User, UserDocument } from '../users/schemas/user.schema.js';
 import { Address } from '../addresses/schemas/address.schema.js';
+import { Business } from '../businesses/schemas/business.schema.js';
 
 export interface AddressSummary {
   _id: string;
   formattedAddress: string;
+}
+
+export interface BusinessAddressSummary {
+  id: string;
+  formattedAddress: string;
+}
+
+export interface BusinessSummary {
+  id: string;
+  businessName: string;
+  addresses: BusinessAddressSummary[];
 }
 
 @Injectable()
@@ -16,6 +28,7 @@ export class AuthRepository implements OnModuleInit {
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @InjectModel(Address.name) private readonly addressModel: Model<Address>,
+    @InjectModel(Business.name) private readonly businessModel: Model<Business>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -96,6 +109,51 @@ export class AuthRepository implements OnModuleInit {
       .select('_id formattedAddress')
       .lean<AddressSummary>()
       .exec();
+  }
+
+  async findBusinessSummariesForOwner(
+    userId: string,
+  ): Promise<BusinessSummary[]> {
+    const businesses = await this.businessModel
+      .find({ ownerId: new Types.ObjectId(userId) })
+      .select('_id businessName addressIds')
+      .lean<
+        {
+          _id: Types.ObjectId;
+          businessName: string;
+          addressIds: Types.ObjectId[];
+        }[]
+      >()
+      .exec();
+    const addressIds = businesses.flatMap((business) => business.addressIds);
+    const addresses =
+      addressIds.length === 0
+        ? []
+        : await this.addressModel
+            .find({
+              _id: { $in: addressIds },
+              userId: new Types.ObjectId(userId),
+            })
+            .select('_id formattedAddress')
+            .lean<{ _id: Types.ObjectId; formattedAddress: string }[]>()
+            .exec();
+    const addressesById = new Map(
+      addresses.map((address) => [
+        address._id.toString(),
+        {
+          id: address._id.toString(),
+          formattedAddress: address.formattedAddress,
+        },
+      ]),
+    );
+    return businesses.map((business) => ({
+      id: business._id.toString(),
+      businessName: business.businessName,
+      addresses: business.addressIds.flatMap((addressId) => {
+        const address = addressesById.get(addressId.toString());
+        return address ? [address] : [];
+      }),
+    }));
   }
 
   async clearRefreshTokenHash(id: string): Promise<void> {

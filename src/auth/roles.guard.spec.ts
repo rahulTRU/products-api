@@ -27,4 +27,22 @@ describe('RolesGuard', () => {
       context.getClass(),
     ]);
   });
+
+  it('allows buyer accounts with the seller capability', () => {
+    const reflector = {
+      getAllAndOverride: vi.fn().mockReturnValue([UserRole.SELLER]),
+    } as unknown as Reflector;
+    const guard = new RolesGuard(reflector);
+    const context = {
+      getHandler: vi.fn(),
+      getClass: vi.fn(),
+      switchToHttp: () => ({
+        getRequest: () => ({
+          user: { role: UserRole.BUYER, sellerEnabled: true },
+        }),
+      }),
+    } as unknown as ExecutionContext;
+
+    expect(guard.canActivate(context)).toBe(true);
+  });
 });

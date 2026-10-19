@@ -87,7 +87,7 @@ describe('PATCH /users/latest-address (e2e)', () => {
 
     expect(selectLatestAddress).toHaveBeenCalledWith(
       { addressId: ADDRESS_ID },
-      { id: USER_ID, role: UserRole.BUYER },
+      { id: USER_ID, role: UserRole.BUYER, sellerEnabled: false },
     );
   });
 

@@ -6,8 +6,11 @@ import {
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
+import { ClientSession } from 'mongoose';
 import { UserRole } from '../common/enums/auth.enum.js';
 import type { AuthPrincipal } from '../auth/auth.types.js';
+import { BusinessesRepository } from '../businesses/businesses.repository.js';
+import { AddressesService } from '../addresses/addresses.service.js';
 import type { ProductDocument } from '../products/schemas/product.schema.js';
 import { CreateInventoryDto } from './dto/create-inventory.dto.js';
 import { ListInventoryQueryDto } from './dto/list-inventory-query.dto.js';
@@ -37,6 +40,9 @@ interface InventoryProductResponse {
 export interface InventoryResponse extends InventorySummary {
   productId: string;
   sellerId: string | null;
+  businessId: string | null;
+  unitPrice: number;
+  reservedQuantity: number;
   createdAt: Date;
   product: InventoryProductResponse;
 }
@@ -45,7 +51,11 @@ export interface InventoryResponse extends InventorySummary {
 export class InventoryService implements OnModuleInit {
   private readonly logger = new Logger(InventoryService.name);
 
-  constructor(private readonly inventoryRepository: InventoryRepository) {}
+  constructor(
+    private readonly inventoryRepository: InventoryRepository,
+    private readonly businessesRepository: BusinessesRepository,
+    private readonly addressesService: AddressesService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     const result = await this.inventoryRepository.migrateLegacyStock();
@@ -81,7 +91,7 @@ export class InventoryService implements OnModuleInit {
     user: AuthPrincipal,
     query: ListInventoryQueryDto,
   ): Promise<InventoryResponse[]> {
-    if (user.role !== UserRole.SELLER && user.role !== UserRole.ADMIN) {
+    if (!isSeller(user) && user.role !== UserRole.ADMIN) {
       throw new ForbiddenException('Seller or Admin role required');
     }
     return (
@@ -95,12 +105,19 @@ export class InventoryService implements OnModuleInit {
 
   async findByProductId(
     productId: string,
+    businessId: string,
     user: AuthPrincipal,
   ): Promise<InventoryResponse> {
     this.assertInventoryRole(user);
+    if (
+      user.role !== UserRole.ADMIN &&
+      !(await this.businessesRepository.findOneForOwner(businessId, user.id))
+    ) {
+      throw new NotFoundException('Business was not found');
+    }
     const inventory = await this.inventoryRepository.findByProductId(
       productId,
-      user.role === UserRole.SELLER ? user.id : undefined,
+      businessId,
     );
     if (!inventory) {
       throw new NotFoundException('Inventory was not found');
@@ -113,20 +130,31 @@ export class InventoryService implements OnModuleInit {
     user: AuthPrincipal,
   ): Promise<InventoryResponse> {
     this.assertInventoryRole(user);
-    const product = await this.findProductForInventory(dto.productId);
-    this.assertProductOwner(product, user);
+    await this.findProductForInventory(dto.productId);
+    const business =
+      user.role === UserRole.ADMIN
+        ? await this.businessesRepository.findById(dto.businessId)
+        : await this.businessesRepository.findOneForOwner(
+            dto.businessId,
+            user.id,
+          );
+    if (!business) {
+      throw new NotFoundException('Business was not found');
+    }
 
     try {
       const inventory = await this.inventoryRepository.create(
         dto.productId,
-        product.createdBy ? String(product.createdBy) : null,
+        dto.businessId,
+        business.ownerId.toString(),
+        dto.unitPrice,
         dto.quantity,
       );
       return (await this.toResponses([inventory]))[0]!;
     } catch (error) {
       if (isDuplicateKeyError(error)) {
         throw new ConflictException(
-          'Inventory already exists for this product',
+          'This business already has an offer for this product',
         );
       }
       throw error;
@@ -139,10 +167,20 @@ export class InventoryService implements OnModuleInit {
     user: AuthPrincipal,
   ): Promise<InventoryResponse> {
     this.assertInventoryRole(user);
+    if (
+      user.role !== UserRole.ADMIN &&
+      !(await this.businessesRepository.findOneForOwner(
+        dto.businessId,
+        user.id,
+      ))
+    ) {
+      throw new NotFoundException('Business was not found');
+    }
     const inventory = await this.inventoryRepository.updateQuantity(
       productId,
+      dto.businessId,
       dto.quantity,
-      user.role === UserRole.SELLER ? user.id : undefined,
+      dto.unitPrice,
     );
     if (!inventory) {
       throw new NotFoundException('Inventory was not found');
@@ -155,31 +193,171 @@ export class InventoryService implements OnModuleInit {
   ): Promise<Map<string, InventorySummary>> {
     const inventory =
       await this.inventoryRepository.findByProductIds(productIds);
-    return new Map(
-      inventory.map((item) => [
-        item.productId.toString(),
-        {
-          id: item._id.toString(),
-          quantity: item.quantity,
-          availabilityStatus: availabilityStatusFor(item.quantity),
-          updatedAt: item.updatedAt,
-        },
-      ]),
+    const summaries = new Map<string, InventorySummary>();
+    for (const item of inventory) {
+      const productId = item.productId.toString();
+      const previous = summaries.get(productId);
+      const quantity =
+        (previous?.quantity ?? 0) +
+        item.quantity -
+        (item.reservedQuantity ?? 0);
+      summaries.set(productId, {
+        id: previous?.id ?? item._id.toString(),
+        quantity,
+        availabilityStatus: availabilityStatusFor(quantity),
+        updatedAt:
+          !previous || item.updatedAt > previous.updatedAt
+            ? item.updatedAt
+            : previous.updatedAt,
+      });
+    }
+    return summaries;
+  }
+
+  async getAvailableQuantity(
+    productId: string,
+    businessId: string,
+  ): Promise<number> {
+    const inventory =
+      await this.inventoryRepository.findOneOffer(productId, businessId);
+    return inventory
+      ? inventory.quantity - (inventory.reservedQuantity ?? 0)
+      : 0;
+  }
+
+  async getOfferForCart(
+    productId: string,
+    businessId: string,
+    session?: ClientSession,
+  ) {
+    const offer = await this.inventoryRepository.findOneOffer(
+      productId,
+      businessId,
+      session,
+    );
+    if (!offer) {
+      return null;
+    }
+    return {
+      id: offer._id.toString(),
+      unitPrice: offer.unitPrice ?? 0,
+      availableQuantity:
+        offer.quantity - (offer.reservedQuantity ?? 0),
+    };
+  }
+
+  async getOffersByProductId(productId: string) {
+    const offers =
+      await this.inventoryRepository.findOffersByProductId(productId);
+    return Promise.all(
+      offers.map(async (offer) => {
+        const businessId = offer.businessId?.toString();
+        const business = businessId
+          ? await this.businessesRepository.findById(businessId)
+          : null;
+        if (!business) {
+          return null;
+        }
+        const addresses = await this.addressesService.findSummariesForUser(
+          business.addressIds.map((addressId) => addressId.toString()),
+          business.ownerId.toString(),
+        );
+        return {
+          id: offer._id.toString(),
+          productId: offer.productId.toString(),
+          businessId,
+          businessName: business.businessName,
+          sellerId: business.ownerId.toString(),
+          addresses: addresses.map((address) => ({
+            id: address._id.toString(),
+            formattedAddress: address.formattedAddress,
+            city: address.components?.city ?? null,
+            state: address.components?.state ?? null,
+            country: address.components?.country ?? null,
+          })),
+          unitPrice: offer.unitPrice ?? 0,
+          availableQuantity:
+            offer.quantity - (offer.reservedQuantity ?? 0),
+        };
+      }),
+    ).then((result) => result.filter((offer) => offer !== null));
+  }
+
+  reserve(
+    productId: string,
+    businessId: string,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<boolean> {
+    return this.inventoryRepository.reserve(
+      productId,
+      businessId,
+      quantity,
+      session,
     );
   }
 
-  async getAvailableQuantity(productId: string): Promise<number> {
-    const inventory =
-      await this.inventoryRepository.findByProductId(productId);
-    return inventory?.quantity ?? 0;
+  releaseReservation(
+    productId: string,
+    businessId: string,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<boolean> {
+    return this.inventoryRepository.releaseReservation(
+      productId,
+      businessId,
+      quantity,
+      session,
+    );
+  }
+
+  commitReservation(
+    productId: string,
+    businessId: string,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<boolean> {
+    return this.inventoryRepository.commitReservation(
+      productId,
+      businessId,
+      quantity,
+      session,
+    );
   }
 
   async deleteByProductId(productId: string): Promise<void> {
     await this.inventoryRepository.deleteByProductId(productId);
   }
 
+  async deleteOffer(
+    productId: string,
+    businessId: string,
+    user: AuthPrincipal,
+  ): Promise<void> {
+    if (
+      user.role !== UserRole.ADMIN &&
+      !(await this.businessesRepository.findOneForOwner(
+        businessId,
+        user.id,
+      ))
+    ) {
+      throw new NotFoundException('Business was not found');
+    }
+    const deleted = await this.inventoryRepository.deleteOffer(
+      productId,
+      businessId,
+    );
+    if (!deleted) {
+      throw new NotFoundException('Business offer was not found');
+    }
+  }
+
+  hasOffersForProduct(productId: string): Promise<boolean> {
+    return this.inventoryRepository.hasOffersForProduct(productId);
+  }
+
   private assertInventoryRole(user: AuthPrincipal): void {
-    if (user.role !== UserRole.SELLER && user.role !== UserRole.ADMIN) {
+    if (!isSeller(user) && user.role !== UserRole.ADMIN) {
       throw new ForbiddenException('Seller or admin role required');
     }
   }
@@ -193,20 +371,6 @@ export class InventoryService implements OnModuleInit {
       throw new NotFoundException(`Product ${productId} was not found`);
     }
     return product;
-  }
-
-  private assertProductOwner(
-    product: ProductDocument,
-    user: AuthPrincipal,
-  ): void {
-    if (
-      user.role === UserRole.SELLER &&
-      (!product.createdBy || product.createdBy.toString() !== user.id)
-    ) {
-      throw new ForbiddenException(
-        'Sellers can only manage inventory for their own products',
-      );
-    }
   }
 
   private async toResponses(
@@ -238,8 +402,13 @@ function toInventoryResponse(
     id: inventory._id.toString(),
     productId: inventory.productId.toString(),
     sellerId: inventory.sellerId?.toString() ?? null,
-    quantity: inventory.quantity,
-    availabilityStatus: availabilityStatusFor(inventory.quantity),
+    businessId: inventory.businessId?.toString() ?? null,
+    unitPrice: inventory.unitPrice ?? product.price,
+    quantity: inventory.quantity - (inventory.reservedQuantity ?? 0),
+    reservedQuantity: inventory.reservedQuantity ?? 0,
+    availabilityStatus: availabilityStatusFor(
+      inventory.quantity - (inventory.reservedQuantity ?? 0),
+    ),
     createdAt: inventory.createdAt,
     updatedAt: inventory.updatedAt,
     product: {
@@ -264,8 +433,13 @@ function toJoinedInventoryResponse(
     id: inventory._id.toString(),
     productId: inventory.productId.toString(),
     sellerId: inventory.sellerId?.toString() ?? null,
-    quantity: inventory.quantity,
-    availabilityStatus: availabilityStatusFor(inventory.quantity),
+    businessId: inventory.businessId?.toString() ?? null,
+    unitPrice: inventory.unitPrice ?? inventory.product.price,
+    quantity: inventory.quantity - (inventory.reservedQuantity ?? 0),
+    reservedQuantity: inventory.reservedQuantity ?? 0,
+    availabilityStatus: availabilityStatusFor(
+      inventory.quantity - (inventory.reservedQuantity ?? 0),
+    ),
     createdAt: inventory.createdAt,
     updatedAt: inventory.updatedAt,
     product: {
@@ -291,4 +465,8 @@ function isDuplicateKeyError(error: unknown): error is { code: number } {
     'code' in error &&
     error.code === 11000
   );
+}
+
+function isSeller(user: AuthPrincipal): boolean {
+  return user.sellerEnabled === true || user.role === UserRole.SELLER;
 }

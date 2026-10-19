@@ -12,6 +12,13 @@ export class CartProduct {
   })
   productId!: Types.ObjectId;
 
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Business',
+    default: null,
+  })
+  businessId!: Types.ObjectId | null;
+
   @Prop({ required: true, min: 1 })
   quantity!: number;
 }

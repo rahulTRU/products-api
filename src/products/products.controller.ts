@@ -136,6 +136,14 @@ export class ProductsController {
     return this.productsService.findOne(id, select);
   }
 
+  @Get(':id/offers')
+  @ApiOperation({
+    summary: 'List businesses offering a product with price and available stock',
+  })
+  findOffers(@Param('id', ParseObjectIdPipe) id: string) {
+    return this.productsService.findOffers(id);
+  }
+
   @Post()
   @UseGuards(AccessTokenGuard, RolesGuard)
   @Roles(UserRole.SELLER, UserRole.ADMIN)

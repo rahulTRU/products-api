@@ -26,7 +26,9 @@ export class RolesGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    if (!roles.includes(request.user.role)) {
+    const hasSellerCapability =
+      roles.includes(UserRole.SELLER) && request.user.sellerEnabled === true;
+    if (!roles.includes(request.user.role) && !hasSellerCapability) {
       throw new ForbiddenException(
         `Role ${roles.join(' or ')} required to access this resource`,
       );

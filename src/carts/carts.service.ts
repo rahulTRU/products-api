@@ -17,6 +17,8 @@ import type { CartDocument } from './schemas/cart.schema.js';
 
 interface CartProductResponse {
   id: string;
+  businessId: string | null;
+  businessName: string | null;
   title: string;
   price: number;
   quantity: number;
@@ -24,6 +26,7 @@ interface CartProductResponse {
   discountPercentage: number;
   discountedTotal: number;
   thumbnail: string;
+  unitPrice: number;
 }
 
 export interface CartResponse {
@@ -54,7 +57,11 @@ export class CartsService {
     }
     const carts = await this.cartsRepository.findAll(query.limit, query.skip);
     const products = await this.getProductMap(carts);
-    return carts.map((cart) => toCartResponse(cart, products));
+    const offers = await this.getOfferMap(carts);
+    const businesses = await this.getBusinessMap(carts);
+    return carts.map((cart) =>
+      toCartResponse(cart, products, offers, businesses),
+    );
   }
 
   async findMine(user: AuthPrincipal): Promise<CartResponse> {
@@ -63,7 +70,12 @@ export class CartsService {
     if (!cart) {
       throw new NotFoundException('Cart was not found');
     }
-    return toCartResponse(cart, await this.getProductMap([cart]));
+    return toCartResponse(
+      cart,
+      await this.getProductMap([cart]),
+      await this.getOfferMap([cart]),
+      await this.getBusinessMap([cart]),
+    );
   }
 
   async putProductInMine(
@@ -72,21 +84,28 @@ export class CartsService {
     user: AuthPrincipal,
   ): Promise<CartResponse> {
     await this.findProduct(productId);
-    await this.ensureStock(productId, dto.quantity);
+    await this.ensureStock(productId, dto.businessId, dto.quantity);
     const cart = await this.cartsRepository.findOrCreateByUserId(user.id);
 
     const updatedCart = await this.saveWithConflict(() =>
       this.cartsRepository.putProductQuantity(
         cart,
         productId.toLowerCase(),
+        dto.businessId.toLowerCase(),
         dto.quantity,
       ),
     );
-    return toCartResponse(updatedCart, await this.getProductMap([updatedCart]));
+    return toCartResponse(
+      updatedCart,
+      await this.getProductMap([updatedCart]),
+      await this.getOfferMap([updatedCart]),
+      await this.getBusinessMap([updatedCart]),
+    );
   }
 
   async removeProductFromMine(
     productId: string,
+    businessId: string,
     user: AuthPrincipal,
   ): Promise<CartResponse> {
     this.assertCartRole(user);
@@ -95,16 +114,29 @@ export class CartsService {
       throw new NotFoundException('Cart was not found');
     }
     const updatedCart = await this.saveWithConflict(() =>
-      this.cartsRepository.removeProduct(cart, productId.toLowerCase()),
+      this.cartsRepository.removeProduct(
+        cart,
+        productId.toLowerCase(),
+        businessId.toLowerCase(),
+      ),
     );
     if (!updatedCart) {
       throw new NotFoundException('Product was not found in this cart');
     }
-    return toCartResponse(updatedCart, await this.getProductMap([updatedCart]));
+    return toCartResponse(
+      updatedCart,
+      await this.getProductMap([updatedCart]),
+      await this.getOfferMap([updatedCart]),
+      await this.getBusinessMap([updatedCart]),
+    );
   }
 
   private assertCartRole(user: AuthPrincipal): void {
-    if (user.role !== UserRole.BUYER && user.role !== UserRole.ADMIN) {
+    if (
+      user.role !== UserRole.BUYER &&
+      user.role !== UserRole.SELLER &&
+      user.role !== UserRole.ADMIN
+    ) {
       throw new ForbiddenException('Only buyers and admins can access carts');
     }
   }
@@ -117,12 +149,21 @@ export class CartsService {
     return product;
   }
 
-  private async ensureStock(productId: string, quantity: number): Promise<void> {
-    const availableQuantity =
-      await this.inventoryService.getAvailableQuantity(productId);
-    if (quantity > availableQuantity) {
+  private async ensureStock(
+    productId: string,
+    businessId: string,
+    quantity: number,
+  ): Promise<void> {
+    const offer = await this.inventoryService.getOfferForCart(
+      productId,
+      businessId,
+    );
+    if (!offer) {
+      throw new NotFoundException('Business offer was not found');
+    }
+    if (quantity > offer.availableQuantity) {
       throw new BadRequestException(
-        `Requested quantity exceeds available inventory (${availableQuantity})`,
+        `Requested quantity exceeds available inventory (${offer.availableQuantity})`,
       );
     }
   }
@@ -161,11 +202,70 @@ export class CartsService {
     }
     return productMap;
   }
+
+  private async getOfferMap(
+    carts: CartDocument[],
+  ): Promise<Map<string, { unitPrice: number; availableQuantity: number }>> {
+    const entries = carts.flatMap((cart) =>
+      cart.products.flatMap((entry) =>
+        entry.businessId
+          ? [
+              {
+                productId: entry.productId.toString(),
+                businessId: entry.businessId.toString(),
+              },
+            ]
+          : [],
+      ),
+    );
+    const offers = await Promise.all(
+      entries.map(async (entry) => ({
+        key: offerKey(entry.productId, entry.businessId),
+        offer: await this.inventoryService.getOfferForCart(
+          entry.productId,
+          entry.businessId,
+        ),
+      })),
+    );
+    const missingOffer = offers.find(({ offer }) => !offer);
+    if (missingOffer) {
+      throw new ConflictException(
+        'A business offer in this cart is no longer available; remove it and select another offer',
+      );
+    }
+    return new Map(
+      offers.flatMap(({ key, offer }) =>
+        offer ? [[key, offer] as const] : [],
+      ),
+    );
+  }
+
+  private async getBusinessMap(carts: CartDocument[]) {
+    const businessIds = [
+      ...new Set(
+        carts.flatMap((cart) =>
+          cart.products.flatMap((entry) =>
+            entry.businessId ? [entry.businessId.toString()] : [],
+          ),
+        ),
+      ),
+    ];
+    const businesses =
+      await this.cartsRepository.findBusinessesByIds(businessIds);
+    return new Map(
+      businesses.map((business) => [
+        business._id.toString(),
+        business.businessName,
+      ]),
+    );
+  }
 }
 
 function toCartResponse(
   cart: CartDocument,
   products: Map<string, ProductDocument>,
+  offers: Map<string, { unitPrice: number; availableQuantity: number }>,
+  businesses: Map<string, string>,
 ): CartResponse {
   const entries = cart.products.map((entry) => {
     const productId = entry.productId.toString();
@@ -175,12 +275,20 @@ function toCartResponse(
         `Product ${productId} referenced by the cart was not found`,
       );
     }
-    const total = roundMoney(product.price * entry.quantity);
+    const businessId = entry.businessId?.toString() ?? null;
+    const offer = businessId
+      ? offers.get(offerKey(productId, businessId))
+      : undefined;
+    const unitPrice = offer?.unitPrice ?? product.price;
+    const total = roundMoney(unitPrice * entry.quantity);
     const discountPercentage = product.discountPercentage ?? 0;
     return {
       id: productId,
+      businessId,
+      businessName: businessId ? businesses.get(businessId) ?? null : null,
       title: product.title,
-      price: product.price,
+      price: unitPrice,
+      unitPrice,
       quantity: entry.quantity,
       total,
       discountPercentage,
@@ -207,6 +315,10 @@ function toCartResponse(
     createdAt: cart.createdAt,
     updatedAt: cart.updatedAt,
   };
+}
+
+function offerKey(productId: string, businessId: string): string {
+  return `${productId}:${businessId}`;
 }
 
 function roundMoney(value: number): number {

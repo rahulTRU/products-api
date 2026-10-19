@@ -8,6 +8,7 @@ import { AuthService } from './auth.service.js';
 import { RolesGuard } from './roles.guard.js';
 import { User, UserSchema } from '../users/schemas/user.schema.js';
 import { Address, AddressSchema } from '../addresses/schemas/address.schema.js';
+import { Business, BusinessSchema } from '../businesses/schemas/business.schema.js';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { Address, AddressSchema } from '../addresses/schemas/address.schema.js';
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
       { name: Address.name, schema: AddressSchema },
+      { name: Business.name, schema: BusinessSchema },
     ]),
   ],
   controllers: [AuthController],

@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import {
   Product,
   ProductDocument,
@@ -22,7 +22,10 @@ export interface InventoryWithProductLookup {
   _id: Types.ObjectId;
   productId: Types.ObjectId;
   sellerId: Types.ObjectId | null;
+  businessId: Types.ObjectId | null;
+  unitPrice?: number;
   quantity: number;
+  reservedQuantity: number;
   createdAt: Date;
   updatedAt: Date;
   product?: InventoryProductLookup;
@@ -56,8 +59,20 @@ export class InventoryRepository {
     );
   }
 
+  findByBusinessIds(
+    businessIds: string[],
+    limit: number,
+    skip: number,
+  ): Promise<InventoryWithProductLookup[]> {
+    return this.findPageWithProducts(
+      { businessId: { $in: businessIds.map((id) => new Types.ObjectId(id)) } },
+      limit,
+      skip,
+    );
+  }
+
   private findPageWithProducts(
-    filter: Record<string, Types.ObjectId>,
+    filter: Record<string, unknown>,
     limit: number,
     skip: number,
   ): Promise<InventoryWithProductLookup[]> {
@@ -97,7 +112,10 @@ export class InventoryRepository {
             _id: 1,
             productId: 1,
             sellerId: 1,
+            businessId: 1,
+            unitPrice: 1,
             quantity: 1,
+            reservedQuantity: 1,
             createdAt: 1,
             updatedAt: 1,
             product: 1,
@@ -109,13 +127,23 @@ export class InventoryRepository {
 
   findByProductId(
     productId: string,
-    sellerId?: string,
+    businessId?: string,
   ): Promise<InventoryDocument | null> {
     return this.inventoryModel
       .findOne({
         productId: new Types.ObjectId(productId),
-        ...(sellerId && { sellerId: new Types.ObjectId(sellerId) }),
+        ...(businessId && { businessId: new Types.ObjectId(businessId) }),
       })
+      .exec();
+  }
+
+  findOffersByProductId(productId: string): Promise<InventoryDocument[]> {
+    return this.inventoryModel
+      .find({
+        productId: new Types.ObjectId(productId),
+        businessId: { $ne: null },
+      })
+      .sort({ unitPrice: 1, _id: 1 })
       .exec();
   }
 
@@ -128,8 +156,19 @@ export class InventoryRepository {
         productId: {
           $in: productIds.map((id) => new Types.ObjectId(id)),
         },
+        businessId: { $ne: null },
       })
       .exec();
+  }
+
+  findBusinessIdsByOwner(ownerId: string): Promise<string[]> {
+    return this.inventoryModel
+      .distinct('businessId', {
+        sellerId: new Types.ObjectId(ownerId),
+        businessId: { $ne: null },
+      })
+      .exec()
+      .then((ids) => ids.map((id) => String(id)));
   }
 
   findProductsByIds(productIds: string[]): Promise<InventoryProductLookup[]> {
@@ -149,37 +188,150 @@ export class InventoryRepository {
 
   create(
     productId: string,
-    sellerId: string | null,
+    businessId: string,
+    sellerId: string,
+    unitPrice: number,
     quantity: number,
   ): Promise<InventoryDocument> {
     return this.inventoryModel.create({
       productId: new Types.ObjectId(productId),
-      sellerId: sellerId ? new Types.ObjectId(sellerId) : null,
+      businessId: new Types.ObjectId(businessId),
+      sellerId: new Types.ObjectId(sellerId),
+      unitPrice,
       quantity,
+      reservedQuantity: 0,
     });
   }
 
   updateQuantity(
     productId: string,
+    businessId: string,
     quantity: number,
-    sellerId?: string,
+    unitPrice?: number,
   ): Promise<InventoryDocument | null> {
     return this.inventoryModel
       .findOneAndUpdate(
         {
           productId: new Types.ObjectId(productId),
-          ...(sellerId && { sellerId: new Types.ObjectId(sellerId) }),
+          businessId: new Types.ObjectId(businessId),
+          reservedQuantity: { $lte: quantity },
         },
-        { $set: { quantity } },
+        {
+          $set: {
+            quantity,
+            ...(unitPrice !== undefined && { unitPrice }),
+          },
+        },
         { returnDocument: 'after', runValidators: true },
       )
       .exec();
   }
 
+  async reserve(
+    productId: string,
+    businessId: string,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const result = await this.inventoryModel
+      .updateOne(
+        {
+          productId: new Types.ObjectId(productId),
+          businessId: new Types.ObjectId(businessId),
+          $expr: {
+            $gte: [
+              { $subtract: ['$quantity', '$reservedQuantity'] },
+              quantity,
+            ],
+          },
+        },
+        { $inc: { reservedQuantity: quantity } },
+      )
+      .session(session)
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
+  async releaseReservation(
+    productId: string,
+    businessId: string,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const result = await this.inventoryModel
+      .updateOne(
+        {
+          productId: new Types.ObjectId(productId),
+          businessId: new Types.ObjectId(businessId),
+          reservedQuantity: { $gte: quantity },
+        },
+        { $inc: { reservedQuantity: -quantity } },
+      )
+      .session(session)
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
+  async commitReservation(
+    productId: string,
+    businessId: string,
+    quantity: number,
+    session: ClientSession,
+  ): Promise<boolean> {
+    const result = await this.inventoryModel
+      .updateOne(
+        {
+          productId: new Types.ObjectId(productId),
+          businessId: new Types.ObjectId(businessId),
+          quantity: { $gte: quantity },
+          reservedQuantity: { $gte: quantity },
+        },
+        { $inc: { quantity: -quantity, reservedQuantity: -quantity } },
+      )
+      .session(session)
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
+  async findOneOffer(
+    productId: string,
+    businessId: string,
+    session?: ClientSession,
+  ): Promise<InventoryDocument | null> {
+    const query = this.inventoryModel
+      .findOne({
+        productId: new Types.ObjectId(productId),
+        businessId: new Types.ObjectId(businessId),
+      });
+    if (session) {
+      query.session(session);
+    }
+    return query.exec();
+  }
+
   async deleteByProductId(productId: string): Promise<void> {
     await this.inventoryModel
-      .deleteOne({ productId: new Types.ObjectId(productId) })
+      .deleteMany({ productId: new Types.ObjectId(productId) })
       .exec();
+  }
+
+  async deleteOffer(productId: string, businessId: string): Promise<boolean> {
+    const result = await this.inventoryModel
+      .deleteOne({
+        productId: new Types.ObjectId(productId),
+        businessId: new Types.ObjectId(businessId),
+      })
+      .exec();
+    return result.deletedCount === 1;
+  }
+
+  hasOffersForProduct(productId: string): Promise<boolean> {
+    return this.inventoryModel
+      .exists({
+        productId: new Types.ObjectId(productId),
+        businessId: { $ne: null },
+      })
+      .then((exists) => exists !== null);
   }
 
   async migrateLegacyStock(): Promise<{
@@ -193,6 +345,22 @@ export class InventoryRepository {
     };
 
     await this.inventoryModel.init();
+    const indexes = await this.inventoryModel.collection.indexes();
+    const oldUniqueProductIndex = indexes.find(
+      (index) =>
+        index.unique === true &&
+        Object.keys(index.key).length === 1 &&
+        index.key.productId === 1,
+    );
+    if (oldUniqueProductIndex?.name) {
+      await this.inventoryModel.collection.dropIndex(
+        oldUniqueProductIndex.name,
+      );
+    }
+    await this.inventoryModel.collection.updateMany(
+      { reservedQuantity: { $exists: false } },
+      { $set: { reservedQuantity: 0 } },
+    );
     const legacyProducts = await this.productModel.collection
       .find({ stock: { $exists: true } })
       .project<LegacyProduct>({ _id: 1, stock: 1, createdBy: 1 })

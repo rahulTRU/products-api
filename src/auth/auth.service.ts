@@ -127,6 +127,8 @@ export class AuthService {
       sub: String(user._id),
       type: TokenType.ACCESS,
       role: user.role,
+      sellerEnabled:
+        user.sellerEnabled === true || user.role === UserRole.SELLER,
     };
     const refreshPayload: TokenPayload = {
       sub: String(user._id),
@@ -182,6 +184,11 @@ export class AuthService {
       gender: user.gender,
       role: user.role,
       image: user.image,
+      sellerEnabled:
+        user.sellerEnabled === true || user.role === UserRole.SELLER,
+      businesses: await this.authRepository.findBusinessSummariesForOwner(
+        String(user._id),
+      ),
       latestSelectedAddress: latestSelectedAddress
         ? {
             id: String(latestSelectedAddress._id),

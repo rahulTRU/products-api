@@ -1,7 +1,9 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
   Logger,
   Param,
   Patch,
@@ -68,9 +70,17 @@ export class InventoryController {
   @ApiOperation({ summary: 'Get inventory for a product' })
   findByProductId(
     @Param('productId', ParseObjectIdPipe) productId: string,
+    @Query('businessId', ParseObjectIdPipe) businessId: string,
     @CurrentUser() user: AuthPrincipal,
   ) {
-    return this.inventoryService.findByProductId(productId, user);
+    return this.inventoryService.findByProductId(productId, businessId, user);
+  }
+
+  @Get(':productId/offers')
+  findOffersByProductId(
+    @Param('productId', ParseObjectIdPipe) productId: string,
+  ) {
+    return this.inventoryService.getOffersByProductId(productId);
   }
 
   @Post()
@@ -95,5 +105,15 @@ export class InventoryController {
     @CurrentUser() user: AuthPrincipal,
   ) {
     return this.inventoryService.updateQuantity(productId, dto, user);
+  }
+
+  @Delete(':productId')
+  @HttpCode(204)
+  removeOffer(
+    @Param('productId', ParseObjectIdPipe) productId: string,
+    @Query('businessId', ParseObjectIdPipe) businessId: string,
+    @CurrentUser() user: AuthPrincipal,
+  ) {
+    return this.inventoryService.deleteOffer(productId, businessId, user);
   }
 }

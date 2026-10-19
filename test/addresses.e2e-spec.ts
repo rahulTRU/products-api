@@ -115,6 +115,7 @@ describe('AddressesController HTTP API (e2e)', () => {
     expect(addressesService.findAll).toHaveBeenCalledWith({
       id: USER_ID,
       role: UserRole.BUYER,
+      sellerEnabled: false,
     });
   });
 
@@ -139,7 +140,7 @@ describe('AddressesController HTTP API (e2e)', () => {
       expect.objectContaining({
         formattedAddress: createPayload.formattedAddress,
       }),
-      { id: USER_ID, role: UserRole.BUYER },
+      { id: USER_ID, role: UserRole.BUYER, sellerEnabled: false },
     );
 
     await request(app.getHttpServer())
@@ -150,6 +151,7 @@ describe('AddressesController HTTP API (e2e)', () => {
     expect(addressesService.findOne).toHaveBeenCalledWith(ADDRESS_ID, {
       id: USER_ID,
       role: UserRole.BUYER,
+      sellerEnabled: false,
     });
 
     await request(app.getHttpServer())
@@ -161,7 +163,7 @@ describe('AddressesController HTTP API (e2e)', () => {
     expect(addressesService.update).toHaveBeenCalledWith(
       ADDRESS_ID,
       { formattedAddress: 'Updated address' },
-      { id: USER_ID, role: UserRole.BUYER },
+      { id: USER_ID, role: UserRole.BUYER, sellerEnabled: false },
     );
 
     await request(app.getHttpServer())
@@ -171,6 +173,7 @@ describe('AddressesController HTTP API (e2e)', () => {
     expect(addressesService.remove).toHaveBeenCalledWith(ADDRESS_ID, {
       id: USER_ID,
       role: UserRole.BUYER,
+      sellerEnabled: false,
     });
   });
 

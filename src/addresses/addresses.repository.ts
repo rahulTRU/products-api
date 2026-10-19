@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Address, AddressDocument } from './schemas/address.schema.js';
+import { Business } from '../businesses/schemas/business.schema.js';
 import { CreateAddressDto } from './dto/create-address.dto.js';
 import { UpdateAddressDto } from './dto/update-address.dto.js';
 
@@ -10,6 +11,8 @@ export class AddressesRepository {
   constructor(
     @InjectModel(Address.name)
     private readonly addressModel: Model<Address>,
+    @InjectModel(Business.name)
+    private readonly businessModel: Model<Business>,
   ) {}
 
   findByUserId(userId: string): Promise<AddressDocument[]> {
@@ -28,6 +31,24 @@ export class AddressesRepository {
         _id: new Types.ObjectId(addressId),
         userId: new Types.ObjectId(userId),
       })
+      .exec();
+  }
+
+  findSummariesForUser(
+    addressIds: string[],
+    userId: string,
+  ): Promise<
+    Pick<AddressDocument, '_id' | 'formattedAddress' | 'components'>[]
+  > {
+    if (addressIds.length === 0) {
+      return Promise.resolve([]);
+    }
+    return this.addressModel
+      .find({
+        _id: { $in: addressIds.map((id) => new Types.ObjectId(id)) },
+        userId: new Types.ObjectId(userId),
+      })
+      .select('_id formattedAddress components')
       .exec();
   }
 
@@ -64,5 +85,11 @@ export class AddressesRepository {
       })
       .exec()
       .then((result) => result.deletedCount === 1);
+  }
+
+  isUsedByBusiness(addressId: string): Promise<boolean> {
+    return this.businessModel
+      .exists({ addressIds: new Types.ObjectId(addressId) })
+      .then((business) => business !== null);
   }
 }

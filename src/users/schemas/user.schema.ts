@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 import { UserGender, UserRole } from '../../common/enums/auth.enum.js';
 
 export type UserDocument = HydratedDocument<User>;
@@ -38,6 +38,13 @@ export class User {
 
   @Prop({ default: '' })
   image!: string;
+
+  @Prop({
+    type: MongooseSchema.Types.ObjectId,
+    ref: 'Address',
+    default: null,
+  })
+  latestSelectedAddressId!: Types.ObjectId | null;
 
   @Prop({ type: String, default: null, select: false })
   refreshTokenHash!: string | null;

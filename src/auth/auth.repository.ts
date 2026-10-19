@@ -2,6 +2,12 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { User, UserDocument } from '../users/schemas/user.schema.js';
+import { Address } from '../addresses/schemas/address.schema.js';
+
+export interface AddressSummary {
+  _id: string;
+  formattedAddress: string;
+}
 
 @Injectable()
 export class AuthRepository implements OnModuleInit {
@@ -9,6 +15,7 @@ export class AuthRepository implements OnModuleInit {
 
   constructor(
     @InjectModel(User.name) private readonly userModel: Model<User>,
+    @InjectModel(Address.name) private readonly addressModel: Model<Address>,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -33,6 +40,11 @@ export class AuthRepository implements OnModuleInit {
         `Removed legacy numeric IDs from ${result.modifiedCount} user(s)`,
       );
     }
+
+    await this.userModel.collection.updateMany(
+      { latestSelectedAddressId: { $exists: false } },
+      { $set: { latestSelectedAddressId: null } },
+    );
   }
 
   createUser(
@@ -73,6 +85,17 @@ export class AuthRepository implements OnModuleInit {
 
   findById(id: string): Promise<UserDocument | null> {
     return this.userModel.findById(id).exec();
+  }
+
+  findOwnedAddressSummary(
+    addressId: string,
+    userId: string,
+  ): Promise<AddressSummary | null> {
+    return this.addressModel
+      .findOne({ _id: addressId, userId })
+      .select('_id formattedAddress')
+      .lean<AddressSummary>()
+      .exec();
   }
 
   async clearRefreshTokenHash(id: string): Promise<void> {

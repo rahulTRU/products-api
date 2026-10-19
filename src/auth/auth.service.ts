@@ -116,7 +116,7 @@ export class AuthService {
     if (!user) {
       throw new UnauthorizedException('User no longer exists');
     }
-    return toAuthUser(user);
+    return this.toAuthUser(user);
   }
 
   private async issueTokens(
@@ -130,7 +130,7 @@ export class AuthService {
     };
     const refreshPayload: TokenPayload = {
       sub: String(user._id),
-      type: TokenType.REFRESH,
+      type: TokenType.REFRESH, 
     };
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
@@ -157,21 +157,39 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token has already been used');
     }
 
-    return { ...toAuthUser(user), accessToken, refreshToken };
+    return {
+      ...(await this.toAuthUser(user)),
+      accessToken,
+      refreshToken,
+    };
   }
-}
 
-function toAuthUser(user: UserDocument): AuthUserResponse {
-  return {
-    id: String(user._id),
-    username: user.username,
-    email: user.email,
-    firstName: user.firstName,
-    lastName: user.lastName,
-    gender: user.gender,
-    role: user.role,
-    image: user.image,
-  };
+  private async toAuthUser(user: UserDocument): Promise<AuthUserResponse> {
+    const latestSelectedAddressId =
+      user.latestSelectedAddressId?.toString() ?? null;
+    const latestSelectedAddress = latestSelectedAddressId
+      ? await this.authRepository.findOwnedAddressSummary(
+          latestSelectedAddressId,
+          String(user._id),
+        )
+      : null;
+    return {
+      id: String(user._id),
+      username: user.username,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      gender: user.gender,
+      role: user.role,
+      image: user.image,
+      latestSelectedAddress: latestSelectedAddress
+        ? {
+            id: String(latestSelectedAddress._id),
+            formattedAddress: latestSelectedAddress.formattedAddress,
+          }
+        : null,
+    };
+  }
 }
 
 function hashToken(token: string): string {

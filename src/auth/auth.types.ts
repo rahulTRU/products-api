@@ -9,6 +9,10 @@ export interface AuthUserResponse {
   gender: UserGender;
   role: UserRole;
   image: string;
+  latestSelectedAddress: {
+    id: string;
+    formattedAddress: string;
+  } | null;
 }
 
 export interface AuthResponse extends AuthUserResponse {

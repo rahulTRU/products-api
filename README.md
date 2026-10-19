@@ -100,6 +100,52 @@ sellers. Product responses include an `inventory` summary, and cart quantity
 updates are rejected if they exceed the available inventory. Adding a product
 to a cart does not reserve or deduct inventory.
 
+## Addresses
+
+Authenticated users can manage their own addresses using `GET /addresses`,
+`GET /addresses/:id`, `POST /addresses`, `PATCH /addresses/:id`, and
+`DELETE /addresses/:id`. Address reads and mutations are scoped to the current
+user; other users' addresses return `404`. The server generates `_id`,
+`createdAt`, and `updatedAt`. Address responses include the owning `userId`,
+which is always derived from the authenticated user, never accepted from the
+request body. `metadata.isVerified` is server-controlled.
+
+To remember a selected address, send
+`PATCH /users/latest-address` with `{ "addressId": "<address MongoDB _id>" }`.
+The endpoint requires authentication, confirms that the address belongs to
+the current user, and updates `users.latestSelectedAddressId`; clients cannot
+select another user's address. This field defaults to `null`, and missing
+values on existing user records are backfilled to `null` at application
+startup. Login and `GET /auth/me` responses include
+`latestSelectedAddress: { id, formattedAddress }` when that address still
+exists and belongs to the user; otherwise, the populated field is `null`.
+The address ID is available within this object and is not duplicated as a
+top-level response field.
+
+Create an address with a formatted address and optional Google Places fields:
+
+```json
+{
+  "googlePlaceId": "ChIJ2eLE1mOWmwARsY5ptr4Jw80",
+  "formattedAddress": "1600 Amphitheatre Pkwy, Mountain View, CA 94043, USA",
+  "components": {
+    "streetNumber": "1600",
+    "route": "Amphitheatre Pkwy",
+    "city": "Mountain View",
+    "state": "CA",
+    "postalCode": "94043",
+    "country": "US"
+  },
+  "location": {
+    "type": "Point",
+    "coordinates": [-122.0842499, 37.4220656]
+  },
+  "metadata": {
+    "rawUserInput": "googlehq"
+  }
+}
+```
+
 ## Run tests
 
 ```bash

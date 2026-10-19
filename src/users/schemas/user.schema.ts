@@ -21,10 +21,19 @@ export class User {
   @Prop({ required: true, trim: true })
   lastName!: string;
 
-  @Prop({ required: true, enum: UserGender })
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(UserGender),
+  })
   gender!: UserGender;
 
-  @Prop({ required: true, enum: UserRole, default: UserRole.BUYER })
+  @Prop({
+    type: String,
+    required: true,
+    enum: Object.values(UserRole),
+    default: UserRole.BUYER,
+  })
   role!: UserRole;
 
   @Prop({ default: '' })

@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiParam,
   ApiOperation,
   ApiTags,
 } from '@nestjs/swagger';
@@ -48,18 +49,22 @@ export class InventoryController {
   }
 
   @Get('me')
-  @Roles(UserRole.SELLER)
+  @Roles(UserRole.SELLER, UserRole.ADMIN)
   @ApiOperation({ summary: "List the current seller's inventory" })
   findMine(
-    @CurrentUser() _user: AuthPrincipal,
-    @Query() _query: ListInventoryQueryDto,
+    @CurrentUser() user: AuthPrincipal,
+    @Query() query: ListInventoryQueryDto,
   ) {
     this.logger.log('Reached GET /inventory/me handler');
-    return {"success":"true","message":"This endpoint is currently disabled. Please use the /inventory endpoint with your seller account to view your inventory."}
-    // return this.inventoryService.findMine(user, query);
+    return this.inventoryService.findMine(user, query);
   }
 
   @Get(':productId')
+  @ApiParam({
+    name: 'productId',
+    description: 'MongoDB product ObjectId',
+    schema: { type: 'string', pattern: '^[0-9a-fA-F]{24}$' },
+  })
   @ApiOperation({ summary: 'Get inventory for a product' })
   findByProductId(
     @Param('productId', ParseObjectIdPipe) productId: string,
@@ -78,6 +83,11 @@ export class InventoryController {
   }
 
   @Patch(':productId')
+  @ApiParam({
+    name: 'productId',
+    description: 'MongoDB product ObjectId',
+    schema: { type: 'string', pattern: '^[0-9a-fA-F]{24}$' },
+  })
   @ApiOperation({ summary: 'Set inventory quantity for a product' })
   updateQuantity(
     @Param('productId', ParseObjectIdPipe) productId: string,

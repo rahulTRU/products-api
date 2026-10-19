@@ -3,7 +3,12 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 export class ListInventoryQueryDto {
-  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 100 })
+  @ApiPropertyOptional({
+    type: 'integer',
+    default: 20,
+    minimum: 1,
+    maximum: 100,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -11,7 +16,7 @@ export class ListInventoryQueryDto {
   @Max(100)
   limit = 20;
 
-  @ApiPropertyOptional({ default: 0, minimum: 0 })
+  @ApiPropertyOptional({ type: 'integer', default: 0, minimum: 0 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

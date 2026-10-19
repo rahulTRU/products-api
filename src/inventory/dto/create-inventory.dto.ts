@@ -7,7 +7,7 @@ export class CreateInventoryDto {
   @IsMongoId()
   productId!: string;
 
-  @ApiProperty({ example: 54, minimum: 0 })
+  @ApiProperty({ type: 'integer', example: 54, minimum: 0 })
   @Type(() => Number)
   @IsInt()
   @Min(0)

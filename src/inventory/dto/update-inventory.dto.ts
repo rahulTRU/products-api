@@ -3,7 +3,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { IsInt, Min } from 'class-validator';
 
 export class UpdateInventoryDto {
-  @ApiProperty({ example: 54, minimum: 0 })
+  @ApiProperty({ type: 'integer', example: 54, minimum: 0 })
   @Type(() => Number)
   @IsInt()
   @Min(0)

@@ -81,8 +81,8 @@ export class InventoryService implements OnModuleInit {
     user: AuthPrincipal,
     query: ListInventoryQueryDto,
   ): Promise<InventoryResponse[]> {
-    if (user.role !== UserRole.SELLER) {
-      throw new ForbiddenException('Seller role required');
+    if (user.role !== UserRole.SELLER && user.role !== UserRole.ADMIN) {
+      throw new ForbiddenException('Seller or Admin role required');
     }
     return (
       await this.inventoryRepository.findBySellerId(
